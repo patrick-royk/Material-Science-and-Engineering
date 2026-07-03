@@ -1,10 +1,3 @@
-No, the previous code completely replaces the 2D canvas with an interactive 3D WebGL viewport. Because a 3D matrix requires calculating an entire extra axis ($Z$), the internal arrays, neighbor-checking loops, and rendering engine are completely different from a flat 2D surface.
-
-If your goal is an all-in-one engine where you can fluidly switch back and forth between a flat **2D grid view** and a voxel **3D grid view** while maintaining that clean, all-white minimalist style, we need a unified system.
-
-Here is the complete, master code for **Automata Studio Pro**. It includes a **Dimensions Toggle (2D / 3D)**. When in 2D, you get your interactive drawing grid back; when you switch to 3D, it spins up the Three.js viewport and allows you to simulate volumetric structures.
-
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -566,7 +559,4 @@ if (self === 1) {
     </script>
 </body>
 </html>
-
-```
-
 
