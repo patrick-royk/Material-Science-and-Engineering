@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Automata Studio Pro (2D & 3D)</title>
+    <title>Automata Studio (2D & 3D)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         :root {
@@ -132,6 +132,38 @@
             align-items: center;
         }
 
+        /* Dynamic Palette styles */
+        .palette {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .palette-item {
+            background-color: var(--bg-main);
+            border: 1px solid #ced4da;
+            padding: 10px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 500;
+            font-size: 0.85rem;
+        }
+
+        .palette-item.selected {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 1px var(--accent);
+        }
+
+        .color-preview {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+
         .viewport-wrapper {
             flex: 1;
             background-color: #fafafa;
@@ -142,7 +174,6 @@
             overflow: auto;
         }
 
-        /* Responsive UI view toggling boxes */
         #canvas2d-container {
             box-shadow: 0 8px 30px rgba(0,0,0,0.04);
             border: 1px solid var(--border-color);
@@ -227,14 +258,22 @@
             </div>
 
             <div class="panel-group">
-                <div class="panel-label">Transition Rules (JS)</div>
-                <textarea id="rules-js" rows="12">const alive = neighbors.filter(n => n > 0).length;
+                <div class="panel-label">Cell Variant Palette</div>
+                <div class="palette" id="palette-target">
+                    </div>
+                <button onclick="displayNewSpeciesDialog()" style="border-style: dashed; color: var(--text-muted); margin-top:4px;">+ Create Variant</button>
+            </div>
 
-if (self === 1) {
-    return (alive === 2 || alive === 3) ? 1 : 0;
-} else {
-    return (alive === 3) ? 1 : 0;
-}</textarea>
+            <div id="creation-node" class="panel-group" style="display:none; border-top: 1px solid var(--border-color); padding-top:20px;">
+                <div class="panel-label">Configure Rule Set Structure</div>
+                <input type="text" id="node-name" value="Variant_X" style="width:100%; margin-bottom:8px;">
+                <div class="row-inputs" style="margin-bottom:8px;">
+                    <span style="font-size:0.8rem; color:var(--text-muted);">Render Hex Color:</span>
+                    <input type="color" id="node-color" value="#111111" style="padding:0; width:40px; height:28px; cursor:pointer;">
+                </div>
+                <textarea id="rules-js" rows="10">const alive = neighbors.filter(n => n > 0).length;
+return self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0);</textarea>
+                <button onclick="commitCreatedSpecies()" style="background-color:var(--accent); color:var(--bg-main); font-weight:600; margin-top:4px;">Save Variant into Engine</button>
             </div>
         </aside>
 
@@ -242,35 +281,44 @@ if (self === 1) {
             <div id="canvas2d-container">
                 <canvas id="canvas2d"></canvas>
             </div>
-
             <div id="canvas3d-container"></div>
         </main>
     </div>
 
     <script>
-        // Universal Operational Scope Configurations States tracking maps
         let activeDimensionMode = '2D'; 
         let isRunning = false;
         let isDrawing = false;
-        let neighborhoodType = 1; // 1 = Short/VonNeumann, 2 = Wide/Moore
+        let neighborhoodType = 1; 
         let zoomValue = 14;
 
-        // 2D Matrix Scopes Definitions variables maps
+        // 2D Structures
         let COLS = 60, ROWS = 40;
         let grid2D = [], meta2D = [];
         const canvas2d = document.getElementById('canvas2d');
         const ctx2d = canvas2d.getContext('2d');
 
-        // 3D Matrix Scopes Definitions variables maps
+        // 3D Structures
         let CUBE_SIZE = 20;
-        let grid3D = [];
+        let grid3D = [], meta3D = [];
         let scene3d, camera3d, renderer3d, voxelGroup;
         let voxelMeshCache = {};
 
         const boxGeo = new THREE.BoxGeometry(0.95, 0.95, 0.95);
-        const boxMat = new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.85 });
 
-        // --- Core Startup Lifecycle Management Router ---
+        // Core Extensible Cell Library Data Matrix Model
+        let speciesLibrary = {
+            "Studio Dark": { 
+                color: "#111111", 
+                code: "const alive = neighbors.filter(n => n > 0).length;\nreturn self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0);" 
+            },
+            "Soft Slate": { 
+                color: "#868e96", 
+                code: "const alive = neighbors.filter(n => n > 0).length;\nreturn self === 1 ? (alive === 1 || alive === 2 ? 1 : 0) : (alive === 2 ? 1 : 0);" 
+            }
+        };
+        let selectedSpeciesKey = "Studio Dark";
+
         function switchDimensionContext(mode) {
             isRunning = false;
             document.getElementById('btn-play').textContent = "Run Simulation";
@@ -281,7 +329,6 @@ if (self === 1) {
             const group2D = document.getElementById('inputs-2d-group');
             const group3D = document.getElementById('inputs-3d-group');
             const seedBtn = document.getElementById('btn-seed');
-            
             const btn1 = document.getElementById('btn-neighborhood-1');
             const btn2 = document.getElementById('btn-neighborhood-2');
 
@@ -294,9 +341,6 @@ if (self === 1) {
                 label.textContent = "2D Matrix Bounds (Width × Height)";
                 btn1.textContent = "Von Neumann (4)";
                 btn2.textContent = "Moore (8)";
-                
-                // Load default 2D Rule Template
-                document.getElementById('rules-js').value = `const alive = neighbors.filter(n => n > 0).length;\n\nif (self === 1) {\n    return (alive === 2 || alive === 3) ? 1 : 0;\n} else {\n    return (alive === 3) ? 1 : 0;\n}`;
                 
                 document.getElementById('grid-zoom').min = 4;
                 document.getElementById('grid-zoom').max = 32;
@@ -311,9 +355,6 @@ if (self === 1) {
                 label.textContent = "3D Matrix Bounds (X × Y × Z)";
                 btn1.textContent = "6-Way (Face)";
                 btn2.textContent = "26-Way (Box)";
-                
-                // Load default 3D Rule Template
-                document.getElementById('rules-js').value = `const alive = neighbors.filter(n => n > 0).length;\n\nif (self === 1) {\n    return (alive >= 4 && alive <= 6) ? 1 : 0;\n} else {\n    return (alive === 4) ? 1 : 0;\n}`;
                 
                 document.getElementById('grid-zoom').min = 20;
                 document.getElementById('grid-zoom').max = 120;
@@ -331,16 +372,62 @@ if (self === 1) {
                 canvas2d.width = COLS * zoomValue;
                 canvas2d.height = ROWS * zoomValue;
                 grid2D = Array(ROWS).fill().map(() => Array(COLS).fill(0));
-                meta2D = Array(ROWS).fill().map(() => Array(COLS).fill('Ink'));
+                meta2D = Array(ROWS).fill().map(() => Array(COLS).fill(null));
                 render2DContext();
             } else {
                 CUBE_SIZE = Math.max(5, Math.min(35, parseInt(document.getElementById('inp-cube-size').value) || 20));
                 while(voxelGroup.children.length > 0){ voxelGroup.remove(voxelGroup.children[0]); }
                 voxelMeshCache = {};
                 grid3D = Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill(0)));
+                meta3D = Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill(null)));
                 updateCamera3DPosition();
                 seed3DMatrix();
             }
+        }
+
+        // Palette Management Pipeline 
+        function displayNewSpeciesDialog() {
+            document.getElementById('creation-node').style.display = 'flex';
+            document.getElementById('rules-js').value = speciesLibrary[selectedSpeciesKey].code;
+        }
+
+        function commitCreatedSpecies() {
+            const name = document.getElementById('node-name').value.trim();
+            const color = document.getElementById('node-color').value;
+            const code = document.getElementById('rules-js').value;
+
+            if(!name) return;
+            speciesLibrary[name] = { color: color, code: code };
+            selectedSpeciesKey = name;
+
+            rebuildPaletteUI();
+            document.getElementById('creation-node').style.display = 'none';
+        }
+
+        function rebuildPaletteUI() {
+            const container = document.getElementById('palette-target');
+            container.innerHTML = '';
+
+            Object.keys(speciesLibrary).forEach(key => {
+                const item = document.createElement('div');
+                item.className = `palette-item ${key === selectedSpeciesKey ? 'selected' : ''}`;
+                
+                const dot = document.createElement('div');
+                dot.className = 'color-preview';
+                dot.style.backgroundColor = speciesLibrary[key].color;
+
+                const label = document.createElement('span');
+                label.textContent = key;
+
+                item.appendChild(dot);
+                item.appendChild(label);
+                item.onclick = () => {
+                    selectedSpeciesKey = key;
+                    document.getElementById('rules-js').value = speciesLibrary[key].code;
+                    rebuildPaletteUI();
+                };
+                container.appendChild(item);
+            });
         }
 
         function setNeighborhoodMode(type) {
@@ -349,7 +436,7 @@ if (self === 1) {
             document.getElementById('btn-neighborhood-2').classList.toggle('active-toggle', type === 2);
         }
 
-        // --- Flat 2D Execution Handlers Logic ---
+        // --- Flat 2D Handlers ---
         function render2DContext() {
             ctx2d.fillStyle = '#ffffff';
             ctx2d.fillRect(0, 0, canvas2d.width, canvas2d.height);
@@ -358,8 +445,8 @@ if (self === 1) {
 
             for(let r=0; r<ROWS; r++) {
                 for(let c=0; c<COLS; c++) {
-                    if(grid2D[r][c] === 1) {
-                        ctx2d.fillStyle = '#111111';
+                    if(grid2D[r][c] === 1 && meta2D[r][c]) {
+                        ctx2d.fillStyle = speciesLibrary[meta2D[r][c]]?.color || '#000000';
                         ctx2d.fillRect(c * zoomValue, r * zoomValue, zoomValue, zoomValue);
                     } else {
                         ctx2d.strokeRect(c * zoomValue, r * zoomValue, zoomValue, zoomValue);
@@ -376,11 +463,12 @@ if (self === 1) {
 
             if(r >= 0 && r < ROWS && c >= 0 && c < COLS) {
                 grid2D[r][c] = 1;
+                meta2D[r][c] = selectedSpeciesKey;
                 render2DContext();
             }
         }
 
-        // --- WebGL Three.js 3D Layout Infrastructure ---
+        // --- Three.js 3D Viewport Layer ---
         function init3DGraphicsLayer() {
             const container = document.getElementById('canvas3d-container');
             scene3d = new THREE.Scene();
@@ -429,7 +517,13 @@ if (self === 1) {
             for(let x=0; x<CUBE_SIZE; x++){
                 for(let y=0; y<CUBE_SIZE; y++){
                     for(let z=0; z<CUBE_SIZE; z++){
-                        grid3D[x][y][z] = (Math.abs(x-mid)<=3 && Math.abs(y-mid)<=3 && Math.abs(z-mid)<=3 && Math.random()<0.45) ? 1 : 0;
+                        if (Math.abs(x-mid)<=3 && Math.abs(y-mid)<=3 && Math.abs(z-mid)<=3 && Math.random()<0.45) {
+                            grid3D[x][y][z] = 1;
+                            meta3D[x][y][z] = selectedSpeciesKey;
+                        } else {
+                            grid3D[x][y][z] = 0;
+                            meta3D[x][y][z] = null;
+                        }
                     }
                 }
             }
@@ -444,9 +538,12 @@ if (self === 1) {
                         const state = grid3D[x][y][z];
                         const key = `${x},${y},${z}`;
 
-                        if(state === 1) {
+                        if(state === 1 && meta3D[x][y][z]) {
                             if(!voxelMeshCache[key]) {
-                                const voxel = new THREE.Mesh(boxGeo, boxMat);
+                                const activeColorHex = speciesLibrary[meta3D[x][y][z]]?.color || '#000000';
+                                const dynamicMat = new THREE.MeshBasicMaterial({ color: activeColorHex, transparent: true, opacity: 0.85 });
+                                
+                                const voxel = new THREE.Mesh(boxGeo, dynamicMat);
                                 voxel.position.set(x - offset, y - offset, z - offset);
                                 voxelGroup.add(voxel);
                                 voxelMeshCache[key] = voxel;
@@ -462,27 +559,35 @@ if (self === 1) {
             }
         }
 
-        // --- Unified Evolution Calculations Engine Switchboards ---
+        // --- Core Evolution Computing Engine Core ---
         function computeUniversalEvolutionStep() {
-            const ruleText = document.getElementById('rules-js').value;
-            let compiledFormula;
-            try {
-                compiledFormula = new Function('self', 'neighbors', ruleText);
-            } catch(e) { return; }
-
             if(activeDimensionMode === '2D') {
                 const nextGrid = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+                const nextMeta = Array(ROWS).fill().map(() => Array(COLS).fill(null));
                 const offsets = (neighborhoodType === 1) ? [[0,-1],[0,1],[-1,0],[1,0]] : [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
 
                 for(let r=0; r<ROWS; r++) {
                     for(let c=0; c<COLS; c++) {
+                        const selfState = grid2D[r][c];
+                        const cellMeta = meta2D[r][c] || selectedSpeciesKey;
+                        const ruleText = speciesLibrary[cellMeta]?.code || speciesLibrary[Object.keys(speciesLibrary)[0]].code;
+
                         const neighbors = offsets.map(([dr, dc]) => grid2D[(r + dr + ROWS) % ROWS][(c + dc + COLS) % COLS]);
-                        nextGrid[r][c] = compiledFormula(grid2D[r][c], neighbors) ? 1 : 0;
+                        
+                        let output = 0;
+                        try {
+                            output = new Function('self', 'neighbors', ruleText)(selfState, neighbors);
+                        } catch(e) {}
+                        
+                        nextGrid[r][c] = output ? 1 : 0;
+                        nextMeta[r][c] = output ? cellMeta : null;
                     }
                 }
                 grid2D = nextGrid;
+                meta2D = nextMeta;
             } else {
                 const nextGrid = Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill(0)));
+                const nextMeta = Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill(null)));
                 const offsets = [];
                 if(neighborhoodType === 1) {
                     offsets.push([-1,0,0],[1,0,0],[0,-1,0],[0,1,0],[0,0,-1],[0,0,1]);
@@ -496,12 +601,24 @@ if (self === 1) {
                 for(let x=0; x<CUBE_SIZE; x++) {
                     for(let y=0; y<CUBE_SIZE; y++) {
                         for(let z=0; z<CUBE_SIZE; z++) {
+                            const selfState = grid3D[x][y][z];
+                            const cellMeta = meta3D[x][y][z] || selectedSpeciesKey;
+                            const ruleText = speciesLibrary[cellMeta]?.code || speciesLibrary[Object.keys(speciesLibrary)[0]].code;
+
                             const neighbors = offsets.map(([dx, dy, dz]) => grid3D[(x + dx + CUBE_SIZE) % CUBE_SIZE][(y + dy + CUBE_SIZE) % CUBE_SIZE][(z + dz + CUBE_SIZE) % CUBE_SIZE]);
-                            nextGrid[x][y][z] = compiledFormula(grid3D[x][y][z], neighbors) ? 1 : 0;
+                            
+                            let output = 0;
+                            try {
+                                output = new Function('self', 'neighbors', ruleText)(selfState, neighbors);
+                            } catch(e) {}
+
+                            nextGrid[x][y][z] = output ? 1 : 0;
+                            nextMeta[x][y][z] = output ? cellMeta : null;
                         }
                     }
                 }
                 grid3D = nextGrid;
+                meta3D = nextMeta;
             }
         }
 
@@ -515,14 +632,16 @@ if (self === 1) {
         function clearMatrix() {
             if(activeDimensionMode === '2D') {
                 grid2D = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+                meta2D = Array(ROWS).fill().map(() => Array(COLS).fill(null));
                 render2DContext();
             } else {
                 grid3D = Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill(0)));
+                meta3D = Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill(null)));
                 render3DContext();
             }
         }
 
-        // --- Hook Events Listeners Triggers ---
+        // --- Event Interceptors Hooks ---
         document.getElementById('btn-play').addEventListener('click', (e) => {
             isRunning = !isRunning;
             e.target.textContent = isRunning ? "Pause" : "Run Simulation";
@@ -554,7 +673,8 @@ if (self === 1) {
         canvas2d.addEventListener('mousemove', paint2DCells);
         window.addEventListener('mouseup', () => isDrawing = false);
 
-        // Core Pipeline Initializations bootstrap lifecycle handles
+        // Bootstrap Launcher Initialization
+        rebuildPaletteUI();
         switchDimensionContext('2D');
     </script>
 </body>
