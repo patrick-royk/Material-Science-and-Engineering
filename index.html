@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Automata Studio Pro (2D & 3D)</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <title>Automata Studio</title>
     <style>
         :root {
             --bg-main: #ffffff;
@@ -13,13 +12,14 @@
             --text-main: #212529;
             --text-muted: #6c757d;
             --accent: #000000;
+            --accent-light: #f1f3f5;
         }
 
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
 
         body {
@@ -31,6 +31,7 @@
             overflow: hidden;
         }
 
+        /* Top Minimal Header Bar */
         .header {
             background-color: var(--bg-main);
             border-bottom: 1px solid var(--border-color);
@@ -61,7 +62,8 @@
             color: var(--text-muted);
         }
 
-        button, input, select {
+        /* Pure White/Light Input & Button aesthetics */
+        button, select, input {
             background-color: var(--bg-main);
             color: var(--text-main);
             border: 1px solid #ced4da;
@@ -84,8 +86,9 @@
             border-color: var(--accent);
         }
 
-        input[type="number"] {
-            width: 60px;
+        input[type="number"], input[type="text"] {
+            cursor: text;
+            width: 70px;
             padding: 6px 10px;
         }
 
@@ -94,12 +97,14 @@
             cursor: pointer;
         }
 
+        /* Split Workspace layout */
         .workspace {
             flex: 1;
             display: flex;
             overflow: hidden;
         }
 
+        /* Left configuration dock */
         .sidebar {
             width: 340px;
             background-color: var(--bg-sub);
@@ -107,9 +112,8 @@
             padding: 32px;
             display: flex;
             flex-direction: column;
-            gap: 28px;
+            gap: 32px;
             overflow-y: auto;
-            z-index: 5;
         }
 
         .panel-group {
@@ -126,17 +130,23 @@
             color: var(--text-muted);
         }
 
+        .panel-hint {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
         .row-inputs {
             display: flex;
-            gap: 6px;
+            gap: 8px;
             align-items: center;
         }
 
+        /* Species list selectors */
         .palette {
             display: flex;
             flex-direction: column;
             gap: 6px;
-            min-height: 50px;
         }
 
         .palette-item {
@@ -164,251 +174,319 @@
             border: 1px solid rgba(0,0,0,0.05);
         }
 
-        .viewport-wrapper {
-            flex: 1;
-            background-color: #fafafa;
-            position: relative;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            overflow: auto;
-        }
-
-        #canvas2d-container {
-            box-shadow: 0 8px 30px rgba(0,0,0,0.04);
-            border: 1px solid var(--border-color);
-            background-color: var(--bg-main);
-            line-height: 0;
-            display: block;
-        }
-
-        #canvas2d {
-            display: block;
-            cursor: crosshair;
-        }
-
-        #canvas3d-container {
-            width: 100%;
-            height: 100%;
-            display: none;
-        }
-
+        /* Code editing interface context mapping */
         textarea {
             width: 100%;
             background-color: var(--bg-main);
             color: #2b2b2b;
-            font-family: monospace;
+            font-family: 'SFMono-Regular', Consolas, "Liberation Mono", Menlo, monospace;
             border: 1px solid #ced4da;
             border-radius: 6px;
             padding: 12px;
+            resize: vertical;
             font-size: 0.8rem;
             line-height: 1.4;
-            resize: vertical;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        /* Right central tracking field canvas viewport */
+        .viewport {
+            flex: 1;
+            background-color: var(--bg-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: auto;
+            padding: 32px;
+        }
+
+        .canvas-shadow {
+            box-shadow: 0 8px 30px rgba(0,0,0,0.04);
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-main);
+            line-height: 0;
+            transition: transform 0.1s ease-out;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
         }
     </style>
 </head>
 <body>
 
     <header class="header">
-        <div class="logo">AUTOMATA // STUDIO PRO</div>
+        <div class="logo">AUTOMATA // STUDIO</div>
         <div class="controls">
-            <select id="engine-dimension-mode" onchange="switchDimensionContext(this.value)">
-                <option value="2D">Flat Matrix (2D)</option>
-                <option value="3D">Volumetric Voxel (3D)</option>
-            </select>
-
             <button id="btn-play">Run Simulation</button>
             <button id="btn-step">Step</button>
             <button id="btn-clear">Clear</button>
-            <button id="btn-seed" style="display:none;" onclick="seed3DMatrix()">Seed Core</button>
-            
+
             <div class="slider-group">
                 <span>Interval:</span>
-                <input type="range" id="sim-speed" min="10" max="500" value="60">
+                <input type="range" id="sim-speed" min="10" max="400" value="60">
             </div>
+
             <div class="slider-group">
                 <span>Zoom:</span>
-                <input type="range" id="grid-zoom" min="4" max="80" value="14">
+                <input type="range" id="grid-zoom" min="4" max="32" value="14">
             </div>
         </div>
     </header>
 
     <div class="workspace">
+
         <aside class="sidebar">
+
             <div class="panel-group">
-                <div class="panel-label" id="dim-label-context">2D Matrix Bounds (Width × Height)</div>
-                <div class="row-inputs" id="inputs-2d-group">
-                    <input type="number" id="inp-cols" value="60" min="10" max="150">
-                    <span style="color:var(--text-muted);">&times;</span>
-                    <input type="number" id="inp-rows" value="40" min="10" max="150">
-                    <button onclick="reconfigureEngineGrid()" style="padding: 6px 12px;">Apply</button>
-                </div>
-                <div class="row-inputs" id="inputs-3d-group" style="display:none;">
-                    <input type="number" id="inp-cube-size" value="20" min="5" max="35">
-                    <button onclick="reconfigureEngineGrid()" style="flex:1;">Generate Cube</button>
+                <div class="panel-label">Grid Type</div>
+                <div class="row-inputs">
+                    <button id="btn-grid-2d" class="active-toggle" style="flex:1;" onclick="setGridType('2d')">2D Grid</button>
+                    <button id="btn-grid-3d" style="flex:1;" onclick="setGridType('3d')">3D Grid</button>
                 </div>
             </div>
 
             <div class="panel-group">
-                <div class="panel-label">Neighborhood Profiler</div>
-                <div class="row-inputs" id="neighborhood-toggles">
-                    <button id="btn-neighborhood-1" class="active-toggle" style="flex:1;" onclick="setNeighborhoodMode(1)">Von Neumann / Face</button>
-                    <button id="btn-neighborhood-2" style="flex:1;" onclick="setNeighborhoodMode(2)">Moore / Full Box</button>
+                <div class="panel-label">Grid Dimensions</div>
+                <div class="row-inputs">
+                    <input type="number" id="inp-cols" value="60" min="10" max="150" title="Columns">
+                    <span style="color:var(--text-muted); font-size:0.8rem;">&times;</span>
+                    <input type="number" id="inp-rows" value="40" min="10" max="150" title="Rows">
+                </div>
+                <div class="row-inputs" id="depth-row" style="display:none;">
+                    <span style="color:var(--text-muted); font-size:0.8rem; white-space:nowrap;">Depth (Z):</span>
+                    <input type="number" id="inp-depth" value="12" min="2" max="60" title="Depth" style="width:100%;">
+                </div>
+                <button onclick="reconfigureGridDimensions()" style="padding: 6px 12px;">Apply</button>
+            </div>
+
+            <div class="panel-group" id="layer-nav-panel" style="display:none;">
+                <div class="panel-label">3D Layer (Z-Slice)</div>
+                <div class="row-inputs">
+                    <button onclick="stepLayer(-1)" style="padding:6px 10px;" title="Previous layer">&larr;</button>
+                    <input type="range" id="layer-slider" min="0" max="0" value="0" style="flex:1;" oninput="setCurrentLayer(parseInt(this.value))">
+                    <button onclick="stepLayer(1)" style="padding:6px 10px;" title="Next layer">&rarr;</button>
+                </div>
+                <div id="layer-label" style="font-size:0.8rem; color:var(--text-muted); text-align:center;">Layer 1 / 12</div>
+            </div>
+
+            <div class="panel-group" id="view-mode-panel" style="display:none;">
+                <div class="panel-label">3D Render Mode</div>
+                <div class="row-inputs">
+                    <button id="btn-view-slice" class="active-toggle" style="flex:1;" onclick="setViewMode3D('slice')">Slice (Edit)</button>
+                    <button id="btn-view-iso" style="flex:1;" onclick="setViewMode3D('iso')">Isometric</button>
+                </div>
+                <div class="panel-hint">Slice mode paints one Z-layer at a time. Isometric is a live read-only preview of every layer stacked as voxels.</div>
+            </div>
+
+            <div class="panel-group">
+                <div class="panel-label">Neighborhood Layer</div>
+                <div class="row-inputs">
+                    <button id="btn-moore" style="flex:1;" onclick="setNeighborhood('moore')">Moore (8)</button>
+                    <button id="btn-von" class="active-toggle" style="flex:1;" onclick="setNeighborhood('von')">Von Neumann (4)</button>
                 </div>
             </div>
 
             <div class="panel-group">
-                <div class="panel-label">Cell Variant Palette</div>
-                <div class="palette" id="palette-target"></div>
+                <div class="panel-label">Cell Palette</div>
+                <div class="palette" id="palette-target">
+                    </div>
+                <button onclick="displayNewSpeciesDialog()" style="border-style: dashed; color: var(--text-muted); margin-top:4px;">+ Add New Species</button>
             </div>
 
-            <div class="panel-group" style="border-top: 1px solid var(--border-color); padding-top:20px;">
-                <div class="panel-label">Transition Rules (Selected Variant)</div>
-                <input type="text" id="node-name" value="Studio Dark" style="width:100%; margin-bottom:8px;" placeholder="Variant Name">
+            <div id="creation-node" class="panel-group" style="display:none; border-top: 1px solid var(--border-color); padding-top:20px;">
+                <div class="panel-label">Configure Custom Variant</div>
+                <input type="text" id="node-name" value="Variant_X" style="width:100%; margin-bottom:8px;">
                 <div class="row-inputs" style="margin-bottom:8px;">
-                    <span style="font-size:0.8rem; color:var(--text-muted);">Display Color:</span>
-                    <input type="color" id="node-color" value="#111111" style="padding:0; width:40px; height:28px; cursor:pointer;">
+                    <span style="font-size:0.8rem; color:var(--text-muted);">Color:</span>
+                    <input type="color" id="node-color" value="#000000" style="padding:0; width:40px; height:28px; cursor:pointer;">
                 </div>
-                <textarea id="rules-js" rows="12"></textarea>
-                <button onclick="saveCurrentRuleset()" style="background-color:var(--accent); color:var(--bg-main); font-weight:600; margin-top:4px;">Update / Save Variant</button>
+                <textarea id="node-js" rows="9">// neighbors.length depends on grid type + neighborhood:
+// 4 (2D Von Neumann), 8 (2D Moore), 6 (3D Von Neumann), 26 (3D Moore)
+const alive = neighbors.filter(n => n > 0).length;
+return self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0);</textarea>
+                <button onclick="commitCreatedSpecies()" style="background-color:var(--accent); color:var(--bg-main); font-weight:600; margin-top:4px;">Save Variant</button>
             </div>
         </aside>
 
-        <main class="viewport-wrapper">
-            <div id="canvas2d-container">
-                <canvas id="canvas2d"></canvas>
+        <main class="viewport">
+            <div class="canvas-shadow">
+                <canvas id="studioCanvas"></canvas>
             </div>
-            <div id="canvas3d-container"></div>
         </main>
     </div>
 
     <script>
-        let activeDimensionMode = '2D'; 
+        let COLS = 60, ROWS = 40, DEPTH = 12;
+        let currentCellSize = 14;
+
+        const canvas = document.getElementById('studioCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // grid/metadata are always 3D arrays: [z][r][c].
+        // In '2d' mode there is exactly one z-layer (z === 0), so every
+        // existing 2D behavior is preserved exactly.
+        let grid = [];
+        let metadata = [];
+
         let isRunning = false;
         let isDrawing = false;
-        let neighborhoodType = 1; 
-        let zoomValue = 14;
+        let neighborhoodMode = 'von'; // Defaulting to Von Neumann to support the custom directional growth
 
-        // 2D Structures
-        let COLS = 60, ROWS = 40;
-        let grid2D = [], meta2D = [];
-        const canvas2d = document.getElementById('canvas2d');
-        const ctx2d = canvas2d.getContext('2d');
+        let gridType = '2d';      // '2d' | '3d'
+        let viewMode3D = 'slice'; // 'slice' | 'iso'  (only relevant when gridType === '3d')
+        let currentLayer = 0;
 
-        // 3D Structures
-        let CUBE_SIZE = 20;
-        let grid3D = [], meta3D = [];
-        let scene3d, camera3d, renderer3d, voxelGroup;
-        let voxelMeshCache = {};
-
-        const boxGeo = new THREE.BoxGeometry(0.95, 0.95, 0.95);
-
-        // Flattened clean code models to bypass line-break bugs
         let speciesLibrary = {
-            "Studio Dark": { 
-                color: "#111111", 
-                code: "const alive = neighbors.filter(n => n > 0).length;\nreturn self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0);" 
+            "Sprout Anchor": {
+                color: "#111111",
+                code: "const [up, down, left, right] = neighbors;\nconst neighborCount = neighbors.filter(n => n > 0).length;\n\nif (self === 1) {\n    return (neighborCount === 4) ? 0 : 1;\n} else {\n    if (up === 1 && (neighborCount === 1 || neighborCount === 2)) return 1;\n    if (down === 1 && (neighborCount === 1 || neighborCount === 2)) return 1;\n    if (left === 1 && (neighborCount === 1 || neighborCount === 3)) return 1;\n    if (right === 1 && (neighborCount === 1 || neighborCount === 3)) return 1;\n    return 0;\n}"
             },
-            "Soft Slate": { 
-                color: "#868e96", 
-                code: "const alive = neighbors.filter(n => n > 0).length;\nreturn self === 1 ? (alive === 1 || alive === 2 ? 1 : 0) : (alive === 2 ? 1 : 0);" 
+            "Minimal Ink": {
+                color: "#adb5bd",
+                code: "const alive = neighbors.filter(n => n > 0).length;\nreturn self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0);"
+            },
+            "Voxel Bloom": {
+                color: "#5c7cfa",
+                code: "// Generalized Life rule: thresholds scale with the neighbor count,\n// so it behaves sensibly in 2D (4/8 neighbors) and 3D (6/26 neighbors).\nconst alive = neighbors.filter(n => n > 0).length;\nconst total = neighbors.length;\nconst surviveMin = Math.round(total * 0.30);\nconst surviveMax = Math.round(total * 0.55);\nconst bornMin = Math.round(total * 0.45);\nconst bornMax = Math.round(total * 0.55);\n\nif (self === 1) {\n    return (alive >= surviveMin && alive <= surviveMax) ? 1 : 0;\n} else {\n    return (alive >= bornMin && alive <= bornMax) ? 1 : 0;\n}"
             }
         };
-        let selectedSpeciesKey = "Studio Dark";
+        let selectedSpeciesKey = "Sprout Anchor";
 
-        function switchDimensionContext(mode) {
-            isRunning = false;
-            document.getElementById('btn-play').textContent = "Run Simulation";
-            document.getElementById('btn-play').classList.remove('active-toggle');
-            activeDimensionMode = mode;
-
-            const label = document.getElementById('dim-label-context');
-            const group2D = document.getElementById('inputs-2d-group');
-            const group3D = document.getElementById('inputs-3d-group');
-            const seedBtn = document.getElementById('btn-seed');
-            const btn1 = document.getElementById('btn-neighborhood-1');
-            const btn2 = document.getElementById('btn-neighborhood-2');
-
-            if(mode === '2D') {
-                document.getElementById('canvas2d-container').style.display = "block";
-                document.getElementById('canvas3d-container').style.display = "none";
-                seedBtn.style.display = "none";
-                group2D.style.display = "flex";
-                group3D.style.display = "none";
-                label.textContent = "2D Matrix Bounds (Width × Height)";
-                btn1.textContent = "Von Neumann (4)";
-                btn2.textContent = "Moore (8)";
-                
-                document.getElementById('grid-zoom').min = 4;
-                document.getElementById('grid-zoom').max = 32;
-                document.getElementById('grid-zoom').value = zoomValue = 14;
-                reconfigureEngineGrid();
-            } else {
-                document.getElementById('canvas2d-container').style.display = "none";
-                document.getElementById('canvas3d-container').style.display = "block";
-                seedBtn.style.display = "block";
-                group2D.style.display = "none";
-                group3D.style.display = "flex";
-                label.textContent = "3D Matrix Bounds (X × Y × Z)";
-                btn1.textContent = "6-Way (Face)";
-                btn2.textContent = "26-Way (Box)";
-                
-                document.getElementById('grid-zoom').min = 20;
-                document.getElementById('grid-zoom').max = 120;
-                document.getElementById('grid-zoom').value = zoomValue = 60;
-                
-                if (!scene3d) init3DGraphicsLayer();
-                reconfigureEngineGrid();
-            }
+        // ---------------------------------------------------------------
+        // Grid lifecycle
+        // ---------------------------------------------------------------
+        function initializeGridMatrix() {
+            const depth = gridType === '3d' ? DEPTH : 1;
+            grid = Array(depth).fill().map(() => Array(ROWS).fill().map(() => Array(COLS).fill(0)));
+            metadata = Array(depth).fill().map(() => Array(ROWS).fill().map(() => Array(COLS).fill(null)));
+            currentLayer = Math.max(0, Math.min(depth - 1, currentLayer));
         }
 
-        function reconfigureEngineGrid() {
-            if(activeDimensionMode === '2D') {
-                COLS = Math.max(10, Math.min(150, parseInt(document.getElementById('inp-cols').value) || 60));
-                ROWS = Math.max(10, Math.min(150, parseInt(document.getElementById('inp-rows').value) || 40));
-                canvas2d.width = COLS * zoomValue;
-                canvas2d.height = ROWS * zoomValue;
-                grid2D = Array(ROWS).fill().map(() => Array(COLS).fill(0));
-                meta2D = Array(ROWS).fill().map(() => Array(COLS).fill(null));
-                render2DContext();
-            } else {
-                CUBE_SIZE = Math.max(5, Math.min(35, parseInt(document.getElementById('inp-cube-size').value) || 20));
-                while(voxelGroup.children.length > 0){ voxelGroup.remove(voxelGroup.children[0]); }
-                voxelMeshCache = {};
-                grid3D = Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill(0)));
-                meta3D = Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill(null)));
-                updateCamera3DPosition();
-                seed3DMatrix();
-            }
+        function reconfigureGridDimensions() {
+            const widthInp = parseInt(document.getElementById('inp-cols').value) || 60;
+            const heightInp = parseInt(document.getElementById('inp-rows').value) || 40;
+            const depthInp = parseInt(document.getElementById('inp-depth').value) || 12;
+
+            COLS = Math.max(10, Math.min(150, widthInp));
+            ROWS = Math.max(10, Math.min(150, heightInp));
+            DEPTH = Math.max(2, Math.min(60, depthInp));
+
+            document.getElementById('inp-cols').value = COLS;
+            document.getElementById('inp-rows').value = ROWS;
+            document.getElementById('inp-depth').value = DEPTH;
+
+            updateCanvasBufferSize();
+            initializeGridMatrix();
+            updateLayerControlsUI();
+            render();
         }
 
-        function saveCurrentRuleset() {
+        function updateCanvasBufferSize() {
+            if (gridType === '3d' && viewMode3D === 'iso') {
+                // Isometric mode sizes the canvas itself inside renderIsometric().
+                return;
+            }
+            canvas.width = COLS * currentCellSize;
+            canvas.height = ROWS * currentCellSize;
+        }
+
+        function setNeighborhood(mode) {
+            neighborhoodMode = mode;
+            document.getElementById('btn-moore').classList.toggle('active-toggle', mode === 'moore');
+            document.getElementById('btn-von').classList.toggle('active-toggle', mode === 'von');
+        }
+
+        function updateNeighborhoodLabels() {
+            document.getElementById('btn-moore').textContent = gridType === '3d' ? 'Moore (26)' : 'Moore (8)';
+            document.getElementById('btn-von').textContent = gridType === '3d' ? 'Von Neumann (6)' : 'Von Neumann (4)';
+        }
+
+        // ---------------------------------------------------------------
+        // Grid Type (2D / 3D) + 3D layer & view controls
+        // ---------------------------------------------------------------
+        function setGridType(type) {
+            gridType = type;
+            document.getElementById('btn-grid-2d').classList.toggle('active-toggle', type === '2d');
+            document.getElementById('btn-grid-3d').classList.toggle('active-toggle', type === '3d');
+            document.getElementById('depth-row').style.display = type === '3d' ? 'flex' : 'none';
+            document.getElementById('layer-nav-panel').style.display = type === '3d' ? 'flex' : 'none';
+            document.getElementById('view-mode-panel').style.display = type === '3d' ? 'flex' : 'none';
+
+            if (type === '2d') {
+                viewMode3D = 'slice';
+                document.getElementById('btn-view-slice').classList.add('active-toggle');
+                document.getElementById('btn-view-iso').classList.remove('active-toggle');
+            }
+
+            updateNeighborhoodLabels();
+            updateCursorStyle();
+            reconfigureGridDimensions();
+        }
+
+        function setViewMode3D(mode) {
+            viewMode3D = mode;
+            document.getElementById('btn-view-slice').classList.toggle('active-toggle', mode === 'slice');
+            document.getElementById('btn-view-iso').classList.toggle('active-toggle', mode === 'iso');
+            updateCursorStyle();
+            updateCanvasBufferSize();
+            render();
+        }
+
+        function updateCursorStyle() {
+            canvas.style.cursor = (gridType === '3d' && viewMode3D === 'iso') ? 'default' : 'crosshair';
+        }
+
+        function updateLayerControlsUI() {
+            const depth = gridType === '3d' ? DEPTH : 1;
+            const slider = document.getElementById('layer-slider');
+            slider.max = Math.max(0, depth - 1);
+            slider.value = currentLayer;
+            document.getElementById('layer-label').textContent = `Layer ${currentLayer + 1} / ${depth}`;
+        }
+
+        function setCurrentLayer(z) {
+            const depth = gridType === '3d' ? DEPTH : 1;
+            currentLayer = Math.max(0, Math.min(depth - 1, z));
+            updateLayerControlsUI();
+            render();
+        }
+
+        function stepLayer(delta) {
+            setCurrentLayer(currentLayer + delta);
+        }
+
+        // Palette Management UI hooks
+        function displayNewSpeciesDialog() {
+            document.getElementById('creation-node').style.display = 'flex';
+        }
+
+        function commitCreatedSpecies() {
             const name = document.getElementById('node-name').value.trim();
             const color = document.getElementById('node-color').value;
-            const code = document.getElementById('rules-js').value;
+            const code = document.getElementById('node-js').value;
 
             if(!name) return;
-            
             speciesLibrary[name] = { color: color, code: code };
             selectedSpeciesKey = name;
+
             rebuildPaletteUI();
+            document.getElementById('creation-node').style.display = 'none';
         }
 
         function rebuildPaletteUI() {
             const container = document.getElementById('palette-target');
-            if(!container) return;
             container.innerHTML = '';
 
-            const keys = Object.keys(speciesLibrary);
-            if(keys.length === 0) {
-                speciesLibrary["Studio Dark"] = { color: "#111111", code: "return self;" };
-                keys.push("Studio Dark");
-            }
-
-            keys.forEach(key => {
+            Object.keys(speciesLibrary).forEach(key => {
                 const item = document.createElement('div');
-                item.className = 'palette-item' + (key === selectedSpeciesKey ? ' selected' : '');
-                
+                item.className = `palette-item ${key === selectedSpeciesKey ? 'selected' : ''}`;
+
                 const dot = document.createElement('div');
                 dot.className = 'color-preview';
                 dot.style.backgroundColor = speciesLibrary[key].color;
@@ -418,265 +496,301 @@
 
                 item.appendChild(dot);
                 item.appendChild(label);
-                
                 item.onclick = () => {
                     selectedSpeciesKey = key;
-                    document.getElementById('node-name').value = key;
-                    document.getElementById('node-color').value = speciesLibrary[key].color;
-                    document.getElementById('rules-js').value = speciesLibrary[key].code;
                     rebuildPaletteUI();
                 };
+
                 container.appendChild(item);
             });
         }
 
-        function setNeighborhoodMode(type) {
-            neighborhoodType = type;
-            document.getElementById('btn-neighborhood-1').classList.toggle('active-toggle', type === 1);
-            document.getElementById('btn-neighborhood-2').classList.toggle('active-toggle', type === 2);
+        // --- Core Engine Computations Cycle Loops ---
+        function clearGrid() {
+            initializeGridMatrix();
+            render();
         }
 
-        // --- Flat 2D Handlers ---
-        function render2DContext() {
-            ctx2d.fillStyle = '#ffffff';
-            ctx2d.fillRect(0, 0, canvas2d.width, canvas2d.height);
-            ctx2d.strokeStyle = '#f1f3f5';
-            ctx2d.lineWidth = 0.5;
-
-            for(let r=0; r<ROWS; r++) {
-                for(let c=0; c<COLS; c++) {
-                    if(grid2D[r][c] === 1 && meta2D[r][c]) {
-                        ctx2d.fillStyle = speciesLibrary[meta2D[r][c]]?.color || '#000000';
-                        ctx2d.fillRect(c * zoomValue, r * zoomValue, zoomValue, zoomValue);
-                    } else {
-                        ctx2d.strokeRect(c * zoomValue, r * zoomValue, zoomValue, zoomValue);
-                    }
-                }
-            }
-        }
-
-        function paint2DCells(e) {
-            if(!isDrawing || activeDimensionMode !== '2D') return;
-            const rect = canvas2d.getBoundingClientRect();
-            const c = Math.floor((e.clientX - rect.left) / zoomValue);
-            const r = Math.floor((e.clientY - rect.top) / zoomValue);
-
-            if(r >= 0 && r < ROWS && c >= 0 && c < COLS) {
-                grid2D[r][c] = 1;
-                meta2D[r][c] = selectedSpeciesKey;
-                render2DContext();
-            }
-        }
-
-        // --- Three.js 3D Viewport Layer ---
-        function init3DGraphicsLayer() {
-            const container = document.getElementById('canvas3d-container');
-            scene3d = new THREE.Scene();
-            scene3d.background = new THREE.Color(0xfafafa);
-
-            camera3d = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 1000);
-            renderer3d = new THREE.WebGLRenderer({ antialias: true });
-            renderer3d.setSize(container.clientWidth, container.clientHeight);
-            container.appendChild(renderer3d.domElement);
-
-            voxelGroup = new THREE.Group();
-            scene3d.add(voxelGroup);
-
-            window.addEventListener('resize', () => {
-                if(activeDimensionMode === '3D') {
-                    camera3d.aspect = container.clientWidth / container.clientHeight;
-                    camera3d.updateProjectionMatrix();
-                    renderer3d.setSize(container.clientWidth, container.clientHeight);
-                }
-            });
-
-            let rotateAngle = 0;
-            function runRenderLoop3D() {
-                requestAnimationFrame(runRenderLoop3D);
-                if(activeDimensionMode === '3D') {
-                    if(isRunning) {
-                        rotateAngle += 0.003;
-                        voxelGroup.rotation.y = rotateAngle;
-                        voxelGroup.rotation.x = Math.sin(rotateAngle * 0.5) * 0.15;
-                    }
-                    renderer3d.render(scene3d, camera3d);
-                }
-            }
-            runRenderLoop3D();
-        }
-
-        function updateCamera3DPosition() {
-            if(!camera3d) return;
-            camera3d.position.set(zoomValue, zoomValue * 0.8, zoomValue);
-            camera3d.lookAt(0, 0, 0);
-        }
-
-        function seed3DMatrix() {
-            if(activeDimensionMode !== '3D') return;
-            const mid = Math.floor(CUBE_SIZE / 2);
-            for(let x=0; x<CUBE_SIZE; x++){
-                for(let y=0; y<CUBE_SIZE; y++){
-                    for(let z=0; z<CUBE_SIZE; z++){
-                        if (Math.abs(x-mid)<=3 && Math.abs(y-mid)<=3 && Math.abs(z-mid)<=3 && Math.random()<0.45) {
-                            grid3D[x][y][z] = 1;
-                            meta3D[x][y][z] = selectedSpeciesKey;
-                        } else {
-                            grid3D[x][y][z] = 0;
-                            meta3D[x][y][z] = null;
-                        }
-                    }
-                }
-            }
-            render3DContext();
-        }
-
-        function render3DContext() {
-            const offset = CUBE_SIZE / 2;
-            for(let x=0; x<CUBE_SIZE; x++) {
-                for(let y=0; y<CUBE_SIZE; y++) {
-                    for(let z=0; z<CUBE_SIZE; z++) {
-                        const state = grid3D[x][y][z];
-                        const key = `${x},${y},${z}`;
-
-                        if(state === 1 && meta3D[x][y][z]) {
-                            if(!voxelMeshCache[key]) {
-                                const activeColorHex = speciesLibrary[meta3D[x][y][z]]?.color || '#000000';
-                                const dynamicMat = new THREE.MeshBasicMaterial({ color: activeColorHex, transparent: true, opacity: 0.85 });
-                                
-                                const voxel = new THREE.Mesh(boxGeo, dynamicMat);
-                                voxel.position.set(x - offset, y - offset, z - offset);
-                                voxelGroup.add(voxel);
-                                voxelMeshCache[key] = voxel;
-                            }
-                        } else {
-                            if(voxelMeshCache[key]) {
-                                voxelGroup.remove(voxelMeshCache[key]);
-                                delete voxelMeshCache[key];
+        // Neighbor offsets as [dz, dr, dc] triples. 2D offsets always carry
+        // dz === 0 and preserve the exact original push order (so existing
+        // rules like "Sprout Anchor" keep behaving identically).
+        function getOffsets() {
+            if (gridType === '3d') {
+                if (neighborhoodMode === 'von') {
+                    // Order: below, above, north, south, west, east
+                    return [[-1,0,0],[1,0,0],[0,-1,0],[0,1,0],[0,0,-1],[0,0,1]];
+                } else {
+                    const offs = [];
+                    for (let dz = -1; dz <= 1; dz++) {
+                        for (let dr = -1; dr <= 1; dr++) {
+                            for (let dc = -1; dc <= 1; dc++) {
+                                if (dz === 0 && dr === 0 && dc === 0) continue;
+                                offs.push([dz, dr, dc]);
                             }
                         }
                     }
+                    return offs;
+                }
+            } else {
+                if (neighborhoodMode === 'von') {
+                    return [[0,0,-1], [0,0,1], [0,-1,0], [0,1,0]]; // left, right, up, down
+                } else {
+                    const offs = [];
+                    for (let dc = -1; dc <= 1; dc++) {
+                        for (let dr = -1; dr <= 1; dr++) {
+                            if (dr === 0 && dc === 0) continue;
+                            offs.push([0, dr, dc]);
+                        }
+                    }
+                    return offs;
                 }
             }
         }
 
-        // --- Core Evolution Computing Engine Core ---
-        function computeUniversalEvolutionStep() {
-            if(activeDimensionMode === '2D') {
-                const nextGrid = Array(ROWS).fill().map(() => Array(COLS).fill(0));
-                const nextMeta = Array(ROWS).fill().map(() => Array(COLS).fill(null));
-                const offsets = (neighborhoodType === 1) ? [[0,-1],[0,1],[-1,0],[1,0]] : [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+        // Compiled rule cache, keyed by rule source text, so we don't
+        // re-JIT a Function per cell per tick (matters a lot more once
+        // grids grow into three dimensions).
+        const ruleCache = new Map();
+        function getCompiledRule(code) {
+            if (!ruleCache.has(code)) {
+                try {
+                    ruleCache.set(code, new Function('self', 'neighbors', code));
+                } catch (err) {
+                    ruleCache.set(code, () => 0);
+                }
+            }
+            return ruleCache.get(code);
+        }
 
-                for(let r=0; r<ROWS; r++) {
-                    for(let c=0; c<COLS; c++) {
-                        const selfState = grid2D[r][c];
-                        const cellMeta = meta2D[r][c] || selectedSpeciesKey;
+        function computeStepEvolution() {
+            const depth = grid.length;
+            const nextGrid = Array(depth).fill().map(() => Array(ROWS).fill().map(() => Array(COLS).fill(0)));
+            const nextMeta = Array(depth).fill().map(() => Array(ROWS).fill().map(() => Array(COLS).fill(null)));
+            const offsets = getOffsets();
+
+            for (let z = 0; z < depth; z++) {
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        const selfState = grid[z][r][c];
+                        let cellMeta = metadata[z][r][c] || selectedSpeciesKey;
+
                         const ruleText = speciesLibrary[cellMeta]?.code || speciesLibrary[Object.keys(speciesLibrary)[0]].code;
 
-                        const neighbors = offsets.map(([dr, dc]) => grid2D[(r + dr + ROWS) % ROWS][(c + dc + COLS) % COLS]);
-                        
+                        const neighbors = [];
+                        for (const [dz, dr, dc] of offsets) {
+                            const nz = (z + dz + depth) % depth;
+                            const nr = (r + dr + ROWS) % ROWS;
+                            const nc = (c + dc + COLS) % COLS;
+                            neighbors.push(grid[nz][nr][nc]);
+                        }
+
                         let output = 0;
                         try {
-                            output = new Function('self', 'neighbors', ruleText)(selfState, neighbors);
-                        } catch(e) {}
-                        
-                        nextGrid[r][c] = output ? 1 : 0;
-                        nextMeta[r][c] = output ? cellMeta : null;
+                            output = getCompiledRule(ruleText)(selfState, neighbors);
+                        } catch (err) {
+                            output = 0;
+                        }
+
+                        nextGrid[z][r][c] = output ? 1 : 0;
+                        nextMeta[z][r][c] = output ? cellMeta : null;
                     }
                 }
-                grid2D = nextGrid;
-                meta2D = nextMeta;
+            }
+            grid = nextGrid;
+            metadata = nextMeta;
+        }
+
+        // ---------------------------------------------------------------
+        // Rendering
+        // ---------------------------------------------------------------
+        function render() {
+            if (gridType === '3d' && viewMode3D === 'iso') {
+                renderIsometric();
             } else {
-                const nextGrid = Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill(0)));
-                const nextMeta = Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill(null)));
-                const offsets = [];
-                if(neighborhoodType === 1) {
-                    offsets.push([-1,0,0],[1,0,0],[0,-1,0],[0,1,0],[0,0,-1],[0,0,1]);
-                } else {
-                    for(let dx=-1; dx<=1; dx++)
-                        for(let dy=-1; dy<=1; dy++)
-                            for(let dz=-1; dz<=1; dz++)
-                                if(!(dx===0&&dy===0&&dz===0)) offsets.push([dx,dy,dz]);
-                }
+                const z = gridType === '3d' ? currentLayer : 0;
+                renderFlat(z);
+            }
+        }
 
-                for(let x=0; x<CUBE_SIZE; x++) {
-                    for(let y=0; y<CUBE_SIZE; y++) {
-                        for(let z=0; z<CUBE_SIZE; z++) {
-                            const selfState = grid3D[x][y][z];
-                            const cellMeta = meta3D[x][y][z] || selectedSpeciesKey;
-                            const ruleText = speciesLibrary[cellMeta]?.code || speciesLibrary[Object.keys(speciesLibrary)[0]].code;
+        function renderFlat(z) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                            const neighbors = offsets.map(([dx, dy, dz]) => grid3D[(x + dx + CUBE_SIZE) % CUBE_SIZE][(y + dy + CUBE_SIZE) % CUBE_SIZE][(z + dz + CUBE_SIZE) % CUBE_SIZE]);
-                            
-                            let output = 0;
-                            try {
-                                output = new Function('self', 'neighbors', ruleText)(selfState, neighbors);
-                            } catch(e) {}
-
-                            nextGrid[x][y][z] = output ? 1 : 0;
-                            nextMeta[x][y][z] = output ? cellMeta : null;
+            // Onion-skin the layer directly below for spatial context.
+            if (gridType === '3d' && z > 0) {
+                ctx.globalAlpha = 0.12;
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        if (grid[z-1][r][c] === 1 && metadata[z-1][r][c]) {
+                            ctx.fillStyle = speciesLibrary[metadata[z-1][r][c]]?.color || '#000000';
+                            ctx.fillRect(c * currentCellSize, r * currentCellSize, currentCellSize, currentCellSize);
                         }
                     }
                 }
-                grid3D = nextGrid;
-                meta3D = nextMeta;
+                ctx.globalAlpha = 1;
+            }
+
+            ctx.strokeStyle = '#f1f3f5';
+            ctx.lineWidth = 0.5;
+
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (grid[z][r][c] === 1 && metadata[z][r][c]) {
+                        ctx.fillStyle = speciesLibrary[metadata[z][r][c]]?.color || '#000000';
+                        ctx.fillRect(c * currentCellSize, r * currentCellSize, currentCellSize, currentCellSize);
+                    } else {
+                        ctx.strokeRect(c * currentCellSize, r * currentCellSize, currentCellSize, currentCellSize);
+                    }
+                }
             }
         }
 
-        function engineSimulationLoop() {
+        function hexToRgb(hex) {
+            hex = (hex || '#000000').replace('#', '');
+            if (hex.length === 3) hex = hex.split('').map(ch => ch + ch).join('');
+            const num = parseInt(hex, 16) || 0;
+            return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+        }
+
+        function shadeColor(hex, factor) {
+            const { r, g, b } = hexToRgb(hex);
+            const nr = Math.max(0, Math.min(255, Math.round(r * factor)));
+            const ng = Math.max(0, Math.min(255, Math.round(g * factor)));
+            const nb = Math.max(0, Math.min(255, Math.round(b * factor)));
+            return `rgb(${nr}, ${ng}, ${nb})`;
+        }
+
+        function computeIsoDimensions() {
+            const unit = currentCellSize;
+            const layerH = Math.max(6, Math.round(currentCellSize * 0.8));
+            const width = Math.ceil((COLS + ROWS) * (unit / 2)) + unit * 2;
+            const height = Math.ceil((COLS + ROWS) * (unit / 4)) + DEPTH * layerH + unit * 2;
+            return { unit, layerH, width, height };
+        }
+
+        function renderIsometric() {
+            const { unit, layerH, width, height } = computeIsoDimensions();
+            canvas.width = width;
+            canvas.height = height;
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, width, height);
+
+            const originX = width / 2;
+            const originY = unit + DEPTH * layerH;
+            const halfW = unit / 2;
+            const halfH = unit / 4;
+
+            const depth = grid.length;
+            const voxels = [];
+            for (let z = 0; z < depth; z++) {
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        if (grid[z][r][c] === 1 && metadata[z][r][c]) {
+                            voxels.push({ z, r, c, color: speciesLibrary[metadata[z][r][c]]?.color || '#000000' });
+                        }
+                    }
+                }
+            }
+
+            // Painter's algorithm: draw bottom-to-top, back-to-front.
+            voxels.sort((a, b) => (a.z - b.z) || ((a.r + a.c) - (b.r + b.c)));
+
+            for (const v of voxels) {
+                const sx = originX + (v.c - v.r) * halfW;
+                const sy = originY + (v.c + v.r) * halfH - v.z * layerH;
+
+                // Top face
+                ctx.beginPath();
+                ctx.moveTo(sx, sy - halfH);
+                ctx.lineTo(sx + halfW, sy);
+                ctx.lineTo(sx, sy + halfH);
+                ctx.lineTo(sx - halfW, sy);
+                ctx.closePath();
+                ctx.fillStyle = shadeColor(v.color, 1.15);
+                ctx.fill();
+
+                // Left face
+                ctx.beginPath();
+                ctx.moveTo(sx - halfW, sy);
+                ctx.lineTo(sx, sy + halfH);
+                ctx.lineTo(sx, sy + halfH + layerH);
+                ctx.lineTo(sx - halfW, sy + layerH);
+                ctx.closePath();
+                ctx.fillStyle = shadeColor(v.color, 0.7);
+                ctx.fill();
+
+                // Right face
+                ctx.beginPath();
+                ctx.moveTo(sx + halfW, sy);
+                ctx.lineTo(sx, sy + halfH);
+                ctx.lineTo(sx, sy + halfH + layerH);
+                ctx.lineTo(sx + halfW, sy + layerH);
+                ctx.closePath();
+                ctx.fillStyle = shadeColor(v.color, 0.85);
+                ctx.fill();
+            }
+
+            if (voxels.length === 0) {
+                ctx.fillStyle = '#adb5bd';
+                ctx.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('No active cells — paint in Slice mode, then switch to Isometric', width / 2, height / 2);
+            }
+        }
+
+        function runLoop() {
             if(!isRunning) return;
-            computeUniversalEvolutionStep();
-            if(activeDimensionMode === '2D') render2DContext(); else render3DContext();
-            setTimeout(() => requestAnimationFrame(engineSimulationLoop), parseInt(document.getElementById('sim-speed').value));
+            computeStepEvolution();
+            render();
+            setTimeout(() => requestAnimationFrame(runLoop), parseInt(document.getElementById('sim-speed').value));
         }
 
-        function clearMatrix() {
-            if(activeDimensionMode === '2D') {
-                grid2D = Array(ROWS).fill().map(() => Array(COLS).fill(0));
-                meta2D = Array(ROWS).fill().map(() => Array(COLS).fill(null));
-                render2DContext();
-            } else {
-                grid3D = Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill(0)));
-                meta3D = Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill(null)));
-                render3DContext();
+        // Canvas Painting Operations
+        function paintGridCells(e) {
+            if(!isDrawing) return;
+            if(gridType === '3d' && viewMode3D === 'iso') return; // isometric preview is read-only
+
+            const rect = canvas.getBoundingClientRect();
+            const c = Math.floor((e.clientX - rect.left) / currentCellSize);
+            const r = Math.floor((e.clientY - rect.top) / currentCellSize);
+
+            if(r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+                const z = gridType === '3d' ? currentLayer : 0;
+                grid[z][r][c] = 1;
+                metadata[z][r][c] = selectedSpeciesKey;
+                render();
             }
         }
 
-        // --- Event Interceptors Hooks ---
+        // --- Binding Actions UI Controls Events Elements ---
         document.getElementById('btn-play').addEventListener('click', (e) => {
             isRunning = !isRunning;
             e.target.textContent = isRunning ? "Pause" : "Run Simulation";
             e.target.classList.toggle('active-toggle', isRunning);
-            if(isRunning) engineSimulationLoop();
+            if(isRunning) runLoop();
         });
 
         document.getElementById('btn-step').addEventListener('click', () => {
-            if(!isRunning) {
-                computeUniversalEvolutionStep();
-                if(activeDimensionMode === '2D') render2DContext(); else render3DContext();
-            }
+            if(!isRunning) { computeStepEvolution(); render(); }
         });
 
-        document.getElementById('btn-clear').addEventListener('click', clearMatrix);
+        document.getElementById('btn-clear').addEventListener('click', clearGrid);
 
         document.getElementById('grid-zoom').addEventListener('input', (e) => {
-            zoomValue = parseInt(e.target.value);
-            if(activeDimensionMode === '2D') {
-                canvas2d.width = COLS * zoomValue;
-                canvas2d.height = ROWS * zoomValue;
-                render2DContext();
-            } else {
-                updateCamera3DPosition();
-            }
+            currentCellSize = parseInt(e.target.value);
+            updateCanvasBufferSize();
+            render();
         });
 
-        canvas2d.addEventListener('mousedown', (e) => { isDrawing = true; paint2DCells(e); });
-        canvas2d.addEventListener('mousemove', paint2DCells);
+        canvas.addEventListener('mousedown', (e) => { isDrawing = true; paintGridCells(e); });
+        canvas.addEventListener('mousemove', paintGridCells);
         window.addEventListener('mouseup', () => isDrawing = false);
 
-        // Bootstrap Launcher Initialization
+        // Core App Lifecycle Initialization
+        updateNeighborhoodLabels();
+        reconfigureGridDimensions();
         rebuildPaletteUI();
-        document.getElementById('rules-js').value = speciesLibrary[selectedSpeciesKey].code;
-        switchDimensionContext('2D');
     </script>
 </body>
 </html>
