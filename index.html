@@ -1,9 +1,17 @@
+No, the previous code completely replaces the 2D canvas with an interactive 3D WebGL viewport. Because a 3D matrix requires calculating an entire extra axis ($Z$), the internal arrays, neighbor-checking loops, and rendering engine are completely different from a flat 2D surface.
+
+If your goal is an all-in-one engine where you can fluidly switch back and forth between a flat **2D grid view** and a voxel **3D grid view** while maintaining that clean, all-white minimalist style, we need a unified system.
+
+Here is the complete, master code for **Automata Studio Pro**. It includes a **Dimensions Toggle (2D / 3D)**. When in 2D, you get your interactive drawing grid back; when you switch to 3D, it spins up the Three.js viewport and allows you to simulate volumetric structures.
+
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Automata Studio</title>
+    <title>Automata Studio Pro (2D & 3D)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         :root {
             --bg-main: #ffffff;
@@ -12,14 +20,13 @@
             --text-main: #212529;
             --text-muted: #6c757d;
             --accent: #000000;
-            --accent-light: #f1f3f5;
         }
 
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
 
         body {
@@ -31,7 +38,6 @@
             overflow: hidden;
         }
 
-        /* Top Minimal Header Bar */
         .header {
             background-color: var(--bg-main);
             border-bottom: 1px solid var(--border-color);
@@ -62,8 +68,7 @@
             color: var(--text-muted);
         }
 
-        /* Pure White/Light Input & Button aesthetics */
-        button, select, input {
+        button, input, select {
             background-color: var(--bg-main);
             color: var(--text-main);
             border: 1px solid #ced4da;
@@ -86,9 +91,8 @@
             border-color: var(--accent);
         }
 
-        input[type="number"], input[type="text"] {
-            cursor: text;
-            width: 70px;
+        input[type="number"] {
+            width: 60px;
             padding: 6px 10px;
         }
 
@@ -97,14 +101,12 @@
             cursor: pointer;
         }
 
-        /* Split Workspace layout */
         .workspace {
             flex: 1;
             display: flex;
             overflow: hidden;
         }
 
-        /* Left configuration dock */
         .sidebar {
             width: 340px;
             background-color: var(--bg-sub);
@@ -112,8 +114,9 @@
             padding: 32px;
             display: flex;
             flex-direction: column;
-            gap: 32px;
+            gap: 28px;
             overflow-y: auto;
+            z-index: 5;
         }
 
         .panel-group {
@@ -132,370 +135,438 @@
 
         .row-inputs {
             display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-
-        /* Species list selectors */
-        .palette {
-            display: flex;
-            flex-direction: column;
             gap: 6px;
-        }
-
-        .palette-item {
-            background-color: var(--bg-main);
-            border: 1px solid #ced4da;
-            padding: 10px 14px;
-            border-radius: 6px;
-            cursor: pointer;
-            display: flex;
             align-items: center;
-            gap: 12px;
-            font-weight: 500;
-            font-size: 0.85rem;
         }
 
-        .palette-item.selected {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 1px var(--accent);
-        }
-
-        .color-preview {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            border: 1px solid rgba(0,0,0,0.05);
-        }
-
-        /* Code editing interface context mapping */
-        textarea {
-            width: 100%;
-            background-color: var(--bg-main);
-            color: #2b2b2b;
-            font-family: 'SFMono-Regular', Consolas, "Liberation Mono", Menlo, monospace;
-            border: 1px solid #ced4da;
-            border-radius: 6px;
-            padding: 12px;
-            resize: vertical;
-            font-size: 0.8rem;
-            line-height: 1.4;
-        }
-
-        textarea:focus {
-            outline: none;
-            border-color: var(--accent);
-        }
-
-        /* Right central tracking field canvas viewport */
-        .viewport {
+        .viewport-wrapper {
             flex: 1;
-            background-color: var(--bg-main);
+            background-color: #fafafa;
+            position: relative;
             display: flex;
             justify-content: center;
             align-items: center;
             overflow: auto;
-            padding: 32px;
         }
 
-        .canvas-shadow {
+        /* Responsive UI view toggling boxes */
+        #canvas2d-container {
             box-shadow: 0 8px 30px rgba(0,0,0,0.04);
             border: 1px solid var(--border-color);
             background-color: var(--bg-main);
             line-height: 0;
-            transition: transform 0.1s ease-out;
+            display: block;
         }
 
-        canvas {
+        #canvas2d {
             display: block;
             cursor: crosshair;
+        }
+
+        #canvas3d-container {
+            width: 100%;
+            height: 100%;
+            display: none;
+        }
+
+        textarea {
+            width: 100%;
+            background-color: var(--bg-main);
+            color: #2b2b2b;
+            font-family: monospace;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            padding: 12px;
+            font-size: 0.8rem;
+            line-height: 1.4;
+            resize: vertical;
         }
     </style>
 </head>
 <body>
 
     <header class="header">
-        <div class="logo">AUTOMATA // STUDIO</div>
+        <div class="logo">AUTOMATA // STUDIO PRO</div>
         <div class="controls">
+            <select id="engine-dimension-mode" onchange="switchDimensionContext(this.value)">
+                <option value="2D">Flat Matrix (2D)</option>
+                <option value="3D">Volumetric Voxel (3D)</option>
+            </select>
+
             <button id="btn-play">Run Simulation</button>
             <button id="btn-step">Step</button>
             <button id="btn-clear">Clear</button>
+            <button id="btn-seed" style="display:none;" onclick="seed3DMatrix()">Seed Core</button>
             
             <div class="slider-group">
                 <span>Interval:</span>
-                <input type="range" id="sim-speed" min="10" max="400" value="60">
+                <input type="range" id="sim-speed" min="10" max="500" value="60">
             </div>
-
             <div class="slider-group">
                 <span>Zoom:</span>
-                <input type="range" id="grid-zoom" min="4" max="32" value="14">
+                <input type="range" id="grid-zoom" min="4" max="80" value="14">
             </div>
         </div>
     </header>
 
     <div class="workspace">
-        
         <aside class="sidebar">
-            
             <div class="panel-group">
-                <div class="panel-label">Grid Dimensions</div>
-                <div class="row-inputs">
-                    <input type="number" id="inp-cols" value="60" min="10" max="150" title="Columns">
-                    <span style="color:var(--text-muted); font-size:0.8rem;">&times;</span>
-                    <input type="number" id="inp-rows" value="40" min="10" max="150" title="Rows">
-                    <button onclick="reconfigureGridDimensions()" style="padding: 6px 12px;">Apply</button>
+                <div class="panel-label" id="dim-label-context">2D Matrix Bounds (Width × Height)</div>
+                <div class="row-inputs" id="inputs-2d-group">
+                    <input type="number" id="inp-cols" value="60" min="10" max="150">
+                    <span style="color:var(--text-muted);">&times;</span>
+                    <input type="number" id="inp-rows" value="40" min="10" max="150">
+                    <button onclick="reconfigureEngineGrid()" style="padding: 6px 12px;">Apply</button>
+                </div>
+                <div class="row-inputs" id="inputs-3d-group" style="display:none;">
+                    <input type="number" id="inp-cube-size" value="20" min="5" max="35">
+                    <button onclick="reconfigureEngineGrid()" style="flex:1;">Generate Cube</button>
                 </div>
             </div>
 
             <div class="panel-group">
-                <div class="panel-label">Neighborhood Layer</div>
-                <div class="row-inputs">
-                    <button id="btn-moore" style="flex:1;" onclick="setNeighborhood('moore')">Moore (8)</button>
-                    <button id="btn-von" class="active-toggle" style="flex:1;" onclick="setNeighborhood('von')">Von Neumann</button>
+                <div class="panel-label">Neighborhood Profiler</div>
+                <div class="row-inputs" id="neighborhood-toggles">
+                    <button id="btn-neighborhood-1" class="active-toggle" style="flex:1;" onclick="setNeighborhoodMode(1)">Von Neumann / Face</button>
+                    <button id="btn-neighborhood-2" style="flex:1;" onclick="setNeighborhoodMode(2)">Moore / Full Box</button>
                 </div>
             </div>
 
             <div class="panel-group">
-                <div class="panel-label">Cell Palette</div>
-                <div class="palette" id="palette-target">
-                    </div>
-                <button onclick="displayNewSpeciesDialog()" style="border-style: dashed; color: var(--text-muted); margin-top:4px;">+ Add New Species</button>
-            </div>
+                <div class="panel-label">Transition Rules (JS)</div>
+                <textarea id="rules-js" rows="12">const alive = neighbors.filter(n => n > 0).length;
 
-            <div id="creation-node" class="panel-group" style="display:none; border-top: 1px solid var(--border-color); padding-top:20px;">
-                <div class="panel-label">Configure Custom Variant</div>
-                <input type="text" id="node-name" value="Variant_X" style="width:100%; margin-bottom:8px;">
-                <div class="row-inputs" style="margin-bottom:8px;">
-                    <span style="font-size:0.8rem; color:var(--text-muted);">Color:</span>
-                    <input type="color" id="node-color" value="#000000" style="padding:0; width:40px; height:28px; cursor:pointer;">
-                </div>
-                <textarea id="node-js" rows="8">const alive = neighbors.filter(n => n > 0).length;
-return self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0);</textarea>
-                <button onclick="commitCreatedSpecies()" style="background-color:var(--accent); color:var(--bg-main); font-weight:600; margin-top:4px;">Save Variant</button>
+if (self === 1) {
+    return (alive === 2 || alive === 3) ? 1 : 0;
+} else {
+    return (alive === 3) ? 1 : 0;
+}</textarea>
             </div>
         </aside>
 
-        <main class="viewport">
-            <div class="canvas-shadow">
-                <canvas id="studioCanvas"></canvas>
+        <main class="viewport-wrapper">
+            <div id="canvas2d-container">
+                <canvas id="canvas2d"></canvas>
             </div>
+
+            <div id="canvas3d-container"></div>
         </main>
     </div>
 
     <script>
-        let COLS = 60, ROWS = 40;
-        let currentCellSize = 14;
-
-        const canvas = document.getElementById('studioCanvas');
-        const ctx = canvas.getContext('2d');
-
-        let grid = [];
-        let metadata = [];
-
+        // Universal Operational Scope Configurations States tracking maps
+        let activeDimensionMode = '2D'; 
         let isRunning = false;
         let isDrawing = false;
-        let neighborhoodMode = 'von'; // Defaulting to Von Neumann to support the custom directional growth
+        let neighborhoodType = 1; // 1 = Short/VonNeumann, 2 = Wide/Moore
+        let zoomValue = 14;
 
-        let speciesLibrary = {
-            "Sprout Anchor": { 
-                color: "#111111", 
-                code: "const [up, down, left, right] = neighbors;\nconst neighborCount = neighbors.filter(n => n > 0).length;\n\nif (self === 1) {\n    return (neighborCount === 4) ? 0 : 1;\n} else {\n    if (up === 1 && (neighborCount === 1 || neighborCount === 2)) return 1;\n    if (down === 1 && (neighborCount === 1 || neighborCount === 2)) return 1;\n    if (left === 1 && (neighborCount === 1 || neighborCount === 3)) return 1;\n    if (right === 1 && (neighborCount === 1 || neighborCount === 3)) return 1;\n    return 0;\n}" 
-            },
-            "Minimal Ink": { 
-                color: "#adb5bd", 
-                code: "const alive = neighbors.filter(n => n > 0).length;\nreturn self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0);" 
-            }
-        };
-        let selectedSpeciesKey = "Sprout Anchor";
+        // 2D Matrix Scopes Definitions variables maps
+        let COLS = 60, ROWS = 40;
+        let grid2D = [], meta2D = [];
+        const canvas2d = document.getElementById('canvas2d');
+        const ctx2d = canvas2d.getContext('2d');
 
-        function initializeGridMatrix() {
-            grid = Array(ROWS).fill().map(() => Array(COLS).fill(0));
-            metadata = Array(ROWS).fill().map(() => Array(COLS).fill(null));
-        }
+        // 3D Matrix Scopes Definitions variables maps
+        let CUBE_SIZE = 20;
+        let grid3D = [];
+        let scene3d, camera3d, renderer3d, voxelGroup;
+        let voxelMeshCache = {};
 
-        function reconfigureGridDimensions() {
-            const widthInp = parseInt(document.getElementById('inp-cols').value) || 60;
-            const heightInp = parseInt(document.getElementById('inp-rows').value) || 40;
+        const boxGeo = new THREE.BoxGeometry(0.95, 0.95, 0.95);
+        const boxMat = new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.85 });
 
-            COLS = Math.max(10, Math.min(150, widthInp));
-            ROWS = Math.max(10, Math.min(150, heightInp));
+        // --- Core Startup Lifecycle Management Router ---
+        function switchDimensionContext(mode) {
+            isRunning = false;
+            document.getElementById('btn-play').textContent = "Run Simulation";
+            document.getElementById('btn-play').classList.remove('active-toggle');
+            activeDimensionMode = mode;
 
-            updateCanvasBufferSize();
-            initializeGridMatrix();
-            render();
-        }
-
-        function updateCanvasBufferSize() {
-            canvas.width = COLS * currentCellSize;
-            canvas.height = ROWS * currentCellSize;
-        }
-
-        function setNeighborhood(mode) {
-            neighborhoodMode = mode;
-            document.getElementById('btn-moore').classList.toggle('active-toggle', mode === 'moore');
-            document.getElementById('btn-von').classList.toggle('active-toggle', mode === 'von');
-        }
-
-        // Palette Management UI hooks
-        function displayNewSpeciesDialog() {
-            document.getElementById('creation-node').style.display = 'flex';
-        }
-
-        function commitCreatedSpecies() {
-            const name = document.getElementById('node-name').value.trim();
-            const color = document.getElementById('node-color').value;
-            const code = document.getElementById('node-js').value;
-
-            if(!name) return;
-            speciesLibrary[name] = { color: color, code: code };
-            selectedSpeciesKey = name;
-
-            rebuildPaletteUI();
-            document.getElementById('creation-node').style.display = 'none';
-        }
-
-        function rebuildPaletteUI() {
-            const container = document.getElementById('palette-target');
-            container.innerHTML = '';
-
-            Object.keys(speciesLibrary).forEach(key => {
-                const item = document.createElement('div');
-                item.className = `palette-item ${key === selectedSpeciesKey ? 'selected' : ''}`;
-                
-                const dot = document.createElement('div');
-                dot.className = 'color-preview';
-                dot.style.backgroundColor = speciesLibrary[key].color;
-
-                const label = document.createElement('span');
-                label.textContent = key;
-
-                item.appendChild(dot);
-                item.appendChild(label);
-                item.onclick = () => {
-                    selectedSpeciesKey = key;
-                    rebuildPaletteUI();
-                };
-
-                container.appendChild(item);
-            });
-        }
-
-        // --- Core Engine Computations Cycle Loops ---
-        function clearGrid() {
-            initializeGridMatrix();
-            render();
-        }
-
-        function computeStepEvolution() {
-            const nextGrid = Array(ROWS).fill().map(() => Array(COLS).fill(0));
-            const nextMeta = Array(ROWS).fill().map(() => Array(COLS).fill(null));
-
-            for(let r=0; r<ROWS; r++) {
-                for(let c=0; c<COLS; c++) {
-                    const selfState = grid[r][c];
-                    let cellMeta = metadata[r][c] || selectedSpeciesKey;
-
-                    const ruleText = speciesLibrary[cellMeta]?.code || speciesLibrary[Object.keys(speciesLibrary)[0]].code;
-
-                    const neighbors = [];
-                    const offsets = [];
-                    if (neighborhoodMode === 'von') {
-                        offsets.push([0,-1], [0,1], [-1,0], [1,0]); // Up, Down, Left, Right
-                    } else {
-                        offsets.push([-1,-1], [0,-1], [1,-1], [-1,0], [1,0], [-1,1], [0,1], [1,1]);
-                    }
-
-                    for(const [dr, dc] of offsets) {
-                        const nr = (r + dr + ROWS) % ROWS;
-                        const nc = (c + dc + COLS) % COLS;
-                        neighbors.push(grid[nr][nc]);
-                    }
-
-                    let output = 0;
-                    try {
-                        const compiledFormula = new Function('self', 'neighbors', ruleText);
-                        output = compiledFormula(selfState, neighbors);
-                    } catch(err) {
-                        output = 0;
-                    }
-
-                    nextGrid[r][c] = output ? 1 : 0;
-                    nextMeta[r][c] = output ? cellMeta : null;
-                }
-            }
-            grid = nextGrid;
-            metadata = nextMeta;
-        }
-
-        function render() {
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            const label = document.getElementById('dim-label-context');
+            const group2D = document.getElementById('inputs-2d-group');
+            const group3D = document.getElementById('inputs-3d-group');
+            const seedBtn = document.getElementById('btn-seed');
             
-            ctx.strokeStyle = '#f1f3f5';
-            ctx.lineWidth = 0.5;
+            const btn1 = document.getElementById('btn-neighborhood-1');
+            const btn2 = document.getElementById('btn-neighborhood-2');
+
+            if(mode === '2D') {
+                document.getElementById('canvas2d-container').style.display = "block";
+                document.getElementById('canvas3d-container').style.display = "none";
+                seedBtn.style.display = "none";
+                group2D.style.display = "flex";
+                group3D.style.display = "none";
+                label.textContent = "2D Matrix Bounds (Width × Height)";
+                btn1.textContent = "Von Neumann (4)";
+                btn2.textContent = "Moore (8)";
+                
+                // Load default 2D Rule Template
+                document.getElementById('rules-js').value = `const alive = neighbors.filter(n => n > 0).length;\n\nif (self === 1) {\n    return (alive === 2 || alive === 3) ? 1 : 0;\n} else {\n    return (alive === 3) ? 1 : 0;\n}`;
+                
+                document.getElementById('grid-zoom').min = 4;
+                document.getElementById('grid-zoom').max = 32;
+                document.getElementById('grid-zoom').value = zoomValue = 14;
+                reconfigureEngineGrid();
+            } else {
+                document.getElementById('canvas2d-container').style.display = "none";
+                document.getElementById('canvas3d-container').style.display = "block";
+                seedBtn.style.display = "block";
+                group2D.style.display = "none";
+                group3D.style.display = "flex";
+                label.textContent = "3D Matrix Bounds (X × Y × Z)";
+                btn1.textContent = "6-Way (Face)";
+                btn2.textContent = "26-Way (Box)";
+                
+                // Load default 3D Rule Template
+                document.getElementById('rules-js').value = `const alive = neighbors.filter(n => n > 0).length;\n\nif (self === 1) {\n    return (alive >= 4 && alive <= 6) ? 1 : 0;\n} else {\n    return (alive === 4) ? 1 : 0;\n}`;
+                
+                document.getElementById('grid-zoom').min = 20;
+                document.getElementById('grid-zoom').max = 120;
+                document.getElementById('grid-zoom').value = zoomValue = 60;
+                
+                if (!scene3d) init3DGraphicsLayer();
+                reconfigureEngineGrid();
+            }
+        }
+
+        function reconfigureEngineGrid() {
+            if(activeDimensionMode === '2D') {
+                COLS = Math.max(10, Math.min(150, parseInt(document.getElementById('inp-cols').value) || 60));
+                ROWS = Math.max(10, Math.min(150, parseInt(document.getElementById('inp-rows').value) || 40));
+                canvas2d.width = COLS * zoomValue;
+                canvas2d.height = ROWS * zoomValue;
+                grid2D = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+                meta2D = Array(ROWS).fill().map(() => Array(COLS).fill('Ink'));
+                render2DContext();
+            } else {
+                CUBE_SIZE = Math.max(5, Math.min(35, parseInt(document.getElementById('inp-cube-size').value) || 20));
+                while(voxelGroup.children.length > 0){ voxelGroup.remove(voxelGroup.children[0]); }
+                voxelMeshCache = {};
+                grid3D = Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill(0)));
+                updateCamera3DPosition();
+                seed3DMatrix();
+            }
+        }
+
+        function setNeighborhoodMode(type) {
+            neighborhoodType = type;
+            document.getElementById('btn-neighborhood-1').classList.toggle('active-toggle', type === 1);
+            document.getElementById('btn-neighborhood-2').classList.toggle('active-toggle', type === 2);
+        }
+
+        // --- Flat 2D Execution Handlers Logic ---
+        function render2DContext() {
+            ctx2d.fillStyle = '#ffffff';
+            ctx2d.fillRect(0, 0, canvas2d.width, canvas2d.height);
+            ctx2d.strokeStyle = '#f1f3f5';
+            ctx2d.lineWidth = 0.5;
 
             for(let r=0; r<ROWS; r++) {
                 for(let c=0; c<COLS; c++) {
-                    if(grid[r][c] === 1 && metadata[r][c]) {
-                        ctx.fillStyle = speciesLibrary[metadata[r][c]]?.color || '#000000';
-                        ctx.fillRect(c * currentCellSize, r * currentCellSize, currentCellSize, currentCellSize);
+                    if(grid2D[r][c] === 1) {
+                        ctx2d.fillStyle = '#111111';
+                        ctx2d.fillRect(c * zoomValue, r * zoomValue, zoomValue, zoomValue);
                     } else {
-                        ctx.strokeRect(c * currentCellSize, r * currentCellSize, currentCellSize, currentCellSize);
+                        ctx2d.strokeRect(c * zoomValue, r * zoomValue, zoomValue, zoomValue);
                     }
                 }
             }
         }
 
-        function runLoop() {
-            if(!isRunning) return;
-            computeStepEvolution();
-            render();
-            setTimeout(() => requestAnimationFrame(runLoop), parseInt(document.getElementById('sim-speed').value));
-        }
-
-        // Canvas Painting Operations
-        function paintGridCells(e) {
-            if(!isDrawing) return;
-            const rect = canvas.getBoundingClientRect();
-            const c = Math.floor((e.clientX - rect.left) / currentCellSize);
-            const r = Math.floor((e.clientY - rect.top) / currentCellSize);
+        function paint2DCells(e) {
+            if(!isDrawing || activeDimensionMode !== '2D') return;
+            const rect = canvas2d.getBoundingClientRect();
+            const c = Math.floor((e.clientX - rect.left) / zoomValue);
+            const r = Math.floor((e.clientY - rect.top) / zoomValue);
 
             if(r >= 0 && r < ROWS && c >= 0 && c < COLS) {
-                grid[r][c] = 1;
-                metadata[r][c] = selectedSpeciesKey;
-                render();
+                grid2D[r][c] = 1;
+                render2DContext();
             }
         }
 
-        // --- Binding Actions UI Controls Events Elements ---
+        // --- WebGL Three.js 3D Layout Infrastructure ---
+        function init3DGraphicsLayer() {
+            const container = document.getElementById('canvas3d-container');
+            scene3d = new THREE.Scene();
+            scene3d.background = new THREE.Color(0xfafafa);
+
+            camera3d = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 1000);
+            renderer3d = new THREE.WebGLRenderer({ antialias: true });
+            renderer3d.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer3d.domElement);
+
+            voxelGroup = new THREE.Group();
+            scene3d.add(voxelGroup);
+
+            window.addEventListener('resize', () => {
+                if(activeDimensionMode === '3D') {
+                    camera3d.aspect = container.clientWidth / container.clientHeight;
+                    camera3d.updateProjectionMatrix();
+                    renderer3d.setSize(container.clientWidth, container.clientHeight);
+                }
+            });
+
+            let rotateAngle = 0;
+            function runRenderLoop3D() {
+                requestAnimationFrame(runRenderLoop3D);
+                if(activeDimensionMode === '3D') {
+                    if(isRunning) {
+                        rotateAngle += 0.003;
+                        voxelGroup.rotation.y = rotateAngle;
+                        voxelGroup.rotation.x = Math.sin(rotateAngle * 0.5) * 0.15;
+                    }
+                    renderer3d.render(scene3d, camera3d);
+                }
+            }
+            runRenderLoop3D();
+        }
+
+        function updateCamera3DPosition() {
+            if(!camera3d) return;
+            camera3d.position.set(zoomValue, zoomValue * 0.8, zoomValue);
+            camera3d.lookAt(0, 0, 0);
+        }
+
+        function seed3DMatrix() {
+            if(activeDimensionMode !== '3D') return;
+            const mid = Math.floor(CUBE_SIZE / 2);
+            for(let x=0; x<CUBE_SIZE; x++){
+                for(let y=0; y<CUBE_SIZE; y++){
+                    for(let z=0; z<CUBE_SIZE; z++){
+                        grid3D[x][y][z] = (Math.abs(x-mid)<=3 && Math.abs(y-mid)<=3 && Math.abs(z-mid)<=3 && Math.random()<0.45) ? 1 : 0;
+                    }
+                }
+            }
+            render3DContext();
+        }
+
+        function render3DContext() {
+            const offset = CUBE_SIZE / 2;
+            for(let x=0; x<CUBE_SIZE; x++) {
+                for(let y=0; y<CUBE_SIZE; y++) {
+                    for(let z=0; z<CUBE_SIZE; z++) {
+                        const state = grid3D[x][y][z];
+                        const key = `${x},${y},${z}`;
+
+                        if(state === 1) {
+                            if(!voxelMeshCache[key]) {
+                                const voxel = new THREE.Mesh(boxGeo, boxMat);
+                                voxel.position.set(x - offset, y - offset, z - offset);
+                                voxelGroup.add(voxel);
+                                voxelMeshCache[key] = voxel;
+                            }
+                        } else {
+                            if(voxelMeshCache[key]) {
+                                voxelGroup.remove(voxelMeshCache[key]);
+                                delete voxelMeshCache[key];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Unified Evolution Calculations Engine Switchboards ---
+        function computeUniversalEvolutionStep() {
+            const ruleText = document.getElementById('rules-js').value;
+            let compiledFormula;
+            try {
+                compiledFormula = new Function('self', 'neighbors', ruleText);
+            } catch(e) { return; }
+
+            if(activeDimensionMode === '2D') {
+                const nextGrid = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+                const offsets = (neighborhoodType === 1) ? [[0,-1],[0,1],[-1,0],[1,0]] : [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+
+                for(let r=0; r<ROWS; r++) {
+                    for(let c=0; c<COLS; c++) {
+                        const neighbors = offsets.map(([dr, dc]) => grid2D[(r + dr + ROWS) % ROWS][(c + dc + COLS) % COLS]);
+                        nextGrid[r][c] = compiledFormula(grid2D[r][c], neighbors) ? 1 : 0;
+                    }
+                }
+                grid2D = nextGrid;
+            } else {
+                const nextGrid = Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill(0)));
+                const offsets = [];
+                if(neighborhoodType === 1) {
+                    offsets.push([-1,0,0],[1,0,0],[0,-1,0],[0,1,0],[0,0,-1],[0,0,1]);
+                } else {
+                    for(let dx=-1; dx<=1; dx++)
+                        for(let dy=-1; dy<=1; dy++)
+                            for(let dz=-1; dz<=1; dz++)
+                                if(!(dx===0&&dy===0&&dz===0)) offsets.push([dx,dy,dz]);
+                }
+
+                for(let x=0; x<CUBE_SIZE; x++) {
+                    for(let y=0; y<CUBE_SIZE; y++) {
+                        for(let z=0; z<CUBE_SIZE; z++) {
+                            const neighbors = offsets.map(([dx, dy, dz]) => grid3D[(x + dx + CUBE_SIZE) % CUBE_SIZE][(y + dy + CUBE_SIZE) % CUBE_SIZE][(z + dz + CUBE_SIZE) % CUBE_SIZE]);
+                            nextGrid[x][y][z] = compiledFormula(grid3D[x][y][z], neighbors) ? 1 : 0;
+                        }
+                    }
+                }
+                grid3D = nextGrid;
+            }
+        }
+
+        function engineSimulationLoop() {
+            if(!isRunning) return;
+            computeUniversalEvolutionStep();
+            if(activeDimensionMode === '2D') render2DContext(); else render3DContext();
+            setTimeout(() => requestAnimationFrame(engineSimulationLoop), parseInt(document.getElementById('sim-speed').value));
+        }
+
+        function clearMatrix() {
+            if(activeDimensionMode === '2D') {
+                grid2D = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+                render2DContext();
+            } else {
+                grid3D = Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill().map(() => Array(CUBE_SIZE).fill(0)));
+                render3DContext();
+            }
+        }
+
+        // --- Hook Events Listeners Triggers ---
         document.getElementById('btn-play').addEventListener('click', (e) => {
             isRunning = !isRunning;
             e.target.textContent = isRunning ? "Pause" : "Run Simulation";
             e.target.classList.toggle('active-toggle', isRunning);
-            if(isRunning) runLoop();
+            if(isRunning) engineSimulationLoop();
         });
 
         document.getElementById('btn-step').addEventListener('click', () => {
-            if(!isRunning) { computeStepEvolution(); render(); }
+            if(!isRunning) {
+                computeUniversalEvolutionStep();
+                if(activeDimensionMode === '2D') render2DContext(); else render3DContext();
+            }
         });
 
-        document.getElementById('btn-clear').addEventListener('click', clearGrid);
+        document.getElementById('btn-clear').addEventListener('click', clearMatrix);
 
         document.getElementById('grid-zoom').addEventListener('input', (e) => {
-            currentCellSize = parseInt(e.target.value);
-            updateCanvasBufferSize();
-            render();
+            zoomValue = parseInt(e.target.value);
+            if(activeDimensionMode === '2D') {
+                canvas2d.width = COLS * zoomValue;
+                canvas2d.height = ROWS * zoomValue;
+                render2DContext();
+            } else {
+                updateCamera3DPosition();
+            }
         });
 
-        canvas.addEventListener('mousedown', (e) => { isDrawing = true; paintGridCells(e); });
-        canvas.addEventListener('mousemove', paintGridCells);
+        canvas2d.addEventListener('mousedown', (e) => { isDrawing = true; paint2DCells(e); });
+        canvas2d.addEventListener('mousemove', paint2DCells);
         window.addEventListener('mouseup', () => isDrawing = false);
 
-        // Core App Lifecycle Initialization
-        reconfigureGridDimensions();
-        rebuildPaletteUI();
+        // Core Pipeline Initializations bootstrap lifecycle handles
+        switchDimensionContext('2D');
     </script>
 </body>
 </html>
+
+```
 
 
