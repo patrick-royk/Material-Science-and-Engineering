@@ -50,8 +50,16 @@
 
         .controls {
             display: flex;
-            gap: 12px;
+            gap: 16px;
             align-items: center;
+        }
+
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
         }
 
         /* Pure White/Light Input & Button aesthetics */
@@ -82,6 +90,11 @@
             cursor: text;
             width: 70px;
             padding: 6px 10px;
+        }
+
+        input[type="range"] {
+            width: 80px;
+            cursor: pointer;
         }
 
         /* Split Workspace layout */
@@ -190,6 +203,7 @@
             border: 1px solid var(--border-color);
             background-color: var(--bg-main);
             line-height: 0;
+            transition: transform 0.1s ease-out;
         }
 
         canvas {
@@ -203,10 +217,19 @@
     <header class="header">
         <div class="logo">AUTOMATA // STUDIO</div>
         <div class="controls">
-            <button id="btn-play" class="active-toggle" style="background-color:var(--accent);">Run Simulation</button>
+            <button id="btn-play">Run Simulation</button>
             <button id="btn-step">Step</button>
             <button id="btn-clear">Clear</button>
-            <input type="range" id="sim-speed" min="10" max="400" value="60" style="width:100px; cursor:pointer;">
+            
+            <div class="slider-group">
+                <span>Interval:</span>
+                <input type="range" id="sim-speed" min="10" max="400" value="60">
+            </div>
+
+            <div class="slider-group">
+                <span>Zoom:</span>
+                <input type="range" id="grid-zoom" min="4" max="32" value="14">
+            </div>
         </div>
     </header>
 
@@ -217,9 +240,9 @@
             <div class="panel-group">
                 <div class="panel-label">Grid Dimensions</div>
                 <div class="row-inputs">
-                    <input type="number" id="inp-cols" value="50" min="10" max="150" title="Columns">
+                    <input type="number" id="inp-cols" value="60" min="10" max="150" title="Columns">
                     <span style="color:var(--text-muted); font-size:0.8rem;">&times;</span>
-                    <input type="number" id="inp-rows" value="35" min="10" max="150" title="Rows">
+                    <input type="number" id="inp-rows" value="40" min="10" max="150" title="Rows">
                     <button onclick="reconfigureGridDimensions()" style="padding: 6px 12px;">Apply</button>
                 </div>
             </div>
@@ -227,8 +250,8 @@
             <div class="panel-group">
                 <div class="panel-label">Neighborhood Layer</div>
                 <div class="row-inputs">
-                    <button id="btn-moore" class="active-toggle" style="flex:1;" onclick="setNeighborhood('moore')">Moore (8)</button>
-                    <button id="btn-von" style="flex:1;" onclick="setNeighborhood('von')">Von Neumann</button>
+                    <button id="btn-moore" style="flex:1;" onclick="setNeighborhood('moore')">Moore (8)</button>
+                    <button id="btn-von" class="active-toggle" style="flex:1;" onclick="setNeighborhood('von')">Von Neumann</button>
                 </div>
             </div>
 
@@ -241,7 +264,7 @@
 
             <div id="creation-node" class="panel-group" style="display:none; border-top: 1px solid var(--border-color); padding-top:20px;">
                 <div class="panel-label">Configure Custom Variant</div>
-                <input type="text" id="node-name" value="Variant_X" class="input-dark" style="width:100%; margin-bottom:8px;">
+                <input type="text" id="node-name" value="Variant_X" style="width:100%; margin-bottom:8px;">
                 <div class="row-inputs" style="margin-bottom:8px;">
                     <span style="font-size:0.8rem; color:var(--text-muted);">Color:</span>
                     <input type="color" id="node-color" value="#000000" style="padding:0; width:40px; height:28px; cursor:pointer;">
@@ -260,8 +283,8 @@ return self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0)
     </div>
 
     <script>
-        let COLS = 50, ROWS = 35;
-        const CELL_SIZE = 14;
+        let COLS = 60, ROWS = 40;
+        let currentCellSize = 14;
 
         const canvas = document.getElementById('studioCanvas');
         const ctx = canvas.getContext('2d');
@@ -271,13 +294,19 @@ return self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0)
 
         let isRunning = false;
         let isDrawing = false;
-        let neighborhoodMode = 'moore'; // 'moore' or 'von'
+        let neighborhoodMode = 'von'; // Defaulting to Von Neumann to support the custom directional growth
 
         let speciesLibrary = {
-            "Ink Dark": { color: "#111111", code: "const alive = neighbors.filter(n => n > 0).length;\nreturn self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0);" },
-            "Soft Shadow": { color: "#adb5bd", code: "const alive = neighbors.filter(n => n > 0).length;\nreturn self === 1 ? (alive === 1 || alive === 2 ? 1 : 0) : (alive === 2 ? 1 : 0);" }
+            "Sprout Anchor": { 
+                color: "#111111", 
+                code: "const [up, down, left, right] = neighbors;\nconst neighborCount = neighbors.filter(n => n > 0).length;\n\nif (self === 1) {\n    return (neighborCount === 4) ? 0 : 1;\n} else {\n    if (up === 1 && (neighborCount === 1 || neighborCount === 2)) return 1;\n    if (down === 1 && (neighborCount === 1 || neighborCount === 2)) return 1;\n    if (left === 1 && (neighborCount === 1 || neighborCount === 3)) return 1;\n    if (right === 1 && (neighborCount === 1 || neighborCount === 3)) return 1;\n    return 0;\n}" 
+            },
+            "Minimal Ink": { 
+                color: "#adb5bd", 
+                code: "const alive = neighbors.filter(n => n > 0).length;\nreturn self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0);" 
+            }
         };
-        let selectedSpeciesKey = "Ink Dark";
+        let selectedSpeciesKey = "Sprout Anchor";
 
         function initializeGridMatrix() {
             grid = Array(ROWS).fill().map(() => Array(COLS).fill(0));
@@ -285,17 +314,20 @@ return self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0)
         }
 
         function reconfigureGridDimensions() {
-            const widthInp = parseInt(document.getElementById('inp-cols').value) || 40;
-            const heightInp = parseInt(document.getElementById('inp-rows').value) || 30;
+            const widthInp = parseInt(document.getElementById('inp-cols').value) || 60;
+            const heightInp = parseInt(document.getElementById('inp-rows').value) || 40;
 
             COLS = Math.max(10, Math.min(150, widthInp));
             ROWS = Math.max(10, Math.min(150, heightInp));
 
-            canvas.width = COLS * CELL_SIZE;
-            canvas.height = ROWS * CELL_SIZE;
-
+            updateCanvasBufferSize();
             initializeGridMatrix();
             render();
+        }
+
+        function updateCanvasBufferSize() {
+            canvas.width = COLS * currentCellSize;
+            canvas.height = ROWS * currentCellSize;
         }
 
         function setNeighborhood(mode) {
@@ -365,11 +397,10 @@ return self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0)
 
                     const ruleText = speciesLibrary[cellMeta]?.code || speciesLibrary[Object.keys(speciesLibrary)[0]].code;
 
-                    // Compile adjacent dynamic vector loops offsets arrays
                     const neighbors = [];
                     const offsets = [];
                     if (neighborhoodMode === 'von') {
-                        offsets.push([0,-1], [0,1], [-1,0], [1,0]);
+                        offsets.push([0,-1], [0,1], [-1,0], [1,0]); // Up, Down, Left, Right
                     } else {
                         offsets.push([-1,-1], [0,-1], [1,-1], [-1,0], [1,0], [-1,1], [0,1], [1,1]);
                     }
@@ -407,9 +438,9 @@ return self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0)
                 for(let c=0; c<COLS; c++) {
                     if(grid[r][c] === 1 && metadata[r][c]) {
                         ctx.fillStyle = speciesLibrary[metadata[r][c]]?.color || '#000000';
-                        ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                        ctx.fillRect(c * currentCellSize, r * currentCellSize, currentCellSize, currentCellSize);
                     } else {
-                        ctx.strokeRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                        ctx.strokeRect(c * currentCellSize, r * currentCellSize, currentCellSize, currentCellSize);
                     }
                 }
             }
@@ -426,8 +457,8 @@ return self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0)
         function paintGridCells(e) {
             if(!isDrawing) return;
             const rect = canvas.getBoundingClientRect();
-            const c = Math.floor((e.clientX - rect.left) / CELL_SIZE);
-            const r = Math.floor((e.clientY - rect.top) / CELL_SIZE);
+            const c = Math.floor((e.clientX - rect.left) / currentCellSize);
+            const r = Math.floor((e.clientY - rect.top) / currentCellSize);
 
             if(r >= 0 && r < ROWS && c >= 0 && c < COLS) {
                 grid[r][c] = 1;
@@ -440,6 +471,7 @@ return self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0)
         document.getElementById('btn-play').addEventListener('click', (e) => {
             isRunning = !isRunning;
             e.target.textContent = isRunning ? "Pause" : "Run Simulation";
+            e.target.classList.toggle('active-toggle', isRunning);
             if(isRunning) runLoop();
         });
 
@@ -449,13 +481,21 @@ return self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0)
 
         document.getElementById('btn-clear').addEventListener('click', clearGrid);
 
+        document.getElementById('grid-zoom').addEventListener('input', (e) => {
+            currentCellSize = parseInt(e.target.value);
+            updateCanvasBufferSize();
+            render();
+        });
+
         canvas.addEventListener('mousedown', (e) => { isDrawing = true; paintGridCells(e); });
         canvas.addEventListener('mousemove', paintGridCells);
         window.addEventListener('mouseup', () => isDrawing = false);
 
-        // Core App Lifecycle Bootstraps Startups Hook Init
+        // Core App Lifecycle Initialization
         reconfigureGridDimensions();
         rebuildPaletteUI();
     </script>
 </body>
 </html>
+
+
