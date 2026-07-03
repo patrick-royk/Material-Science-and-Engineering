@@ -132,11 +132,11 @@
             align-items: center;
         }
 
-        /* Dynamic Palette styles */
         .palette {
             display: flex;
             flex-direction: column;
             gap: 6px;
+            min-height: 50px;
         }
 
         .palette-item {
@@ -259,21 +259,18 @@
 
             <div class="panel-group">
                 <div class="panel-label">Cell Variant Palette</div>
-                <div class="palette" id="palette-target">
-                    </div>
-                <button onclick="displayNewSpeciesDialog()" style="border-style: dashed; color: var(--text-muted); margin-top:4px;">+ Create Variant</button>
+                <div class="palette" id="palette-target"></div>
             </div>
 
-            <div id="creation-node" class="panel-group" style="display:none; border-top: 1px solid var(--border-color); padding-top:20px;">
-                <div class="panel-label">Configure Rule Set Structure</div>
-                <input type="text" id="node-name" value="Variant_X" style="width:100%; margin-bottom:8px;">
+            <div class="panel-group" style="border-top: 1px solid var(--border-color); padding-top:20px;">
+                <div class="panel-label">Transition Rules (Selected Variant)</div>
+                <input type="text" id="node-name" value="Studio Dark" style="width:100%; margin-bottom:8px;" placeholder="Variant Name">
                 <div class="row-inputs" style="margin-bottom:8px;">
-                    <span style="font-size:0.8rem; color:var(--text-muted);">Render Hex Color:</span>
+                    <span style="font-size:0.8rem; color:var(--text-muted);">Display Color:</span>
                     <input type="color" id="node-color" value="#111111" style="padding:0; width:40px; height:28px; cursor:pointer;">
                 </div>
-                <textarea id="custom-rules-js" rows="10">const alive = neighbors.filter(n => n > 0).length;
-return self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0);</textarea>
-                <button onclick="commitCreatedSpecies()" style="background-color:var(--accent); color:var(--bg-main); font-weight:600; margin-top:4px;">Save Variant into Engine</button>
+                <textarea id="rules-js" rows="12"></textarea>
+                <button onclick="saveCurrentRuleset()" style="background-color:var(--accent); color:var(--bg-main); font-weight:600; margin-top:4px;">Update / Save Variant</button>
             </div>
         </aside>
 
@@ -306,7 +303,7 @@ return self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0)
 
         const boxGeo = new THREE.BoxGeometry(0.95, 0.95, 0.95);
 
-        // Core Extensible Cell Library Data Matrix Model
+        // Flattened clean code models to bypass line-break bugs
         let speciesLibrary = {
             "Studio Dark": { 
                 color: "#111111", 
@@ -385,32 +382,32 @@ return self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0)
             }
         }
 
-        // Palette Management Pipeline 
-        function displayNewSpeciesDialog() {
-            document.getElementById('creation-node').style.display = 'flex';
-            document.getElementById('custom-rules-js').value = speciesLibrary[selectedSpeciesKey].code;
-        }
-
-        function commitCreatedSpecies() {
+        function saveCurrentRuleset() {
             const name = document.getElementById('node-name').value.trim();
             const color = document.getElementById('node-color').value;
-            const code = document.getElementById('custom-rules-js').value;
+            const code = document.getElementById('rules-js').value;
 
             if(!name) return;
+            
             speciesLibrary[name] = { color: color, code: code };
             selectedSpeciesKey = name;
-
             rebuildPaletteUI();
-            document.getElementById('creation-node').style.display = 'none';
         }
 
         function rebuildPaletteUI() {
             const container = document.getElementById('palette-target');
+            if(!container) return;
             container.innerHTML = '';
 
-            Object.keys(speciesLibrary).forEach(key => {
+            const keys = Object.keys(speciesLibrary);
+            if(keys.length === 0) {
+                speciesLibrary["Studio Dark"] = { color: "#111111", code: "return self;" };
+                keys.push("Studio Dark");
+            }
+
+            keys.forEach(key => {
                 const item = document.createElement('div');
-                item.className = `palette-item ${key === selectedSpeciesKey ? 'selected' : ''}`;
+                item.className = 'palette-item' + (key === selectedSpeciesKey ? ' selected' : '');
                 
                 const dot = document.createElement('div');
                 dot.className = 'color-preview';
@@ -421,8 +418,12 @@ return self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0)
 
                 item.appendChild(dot);
                 item.appendChild(label);
+                
                 item.onclick = () => {
                     selectedSpeciesKey = key;
+                    document.getElementById('node-name').value = key;
+                    document.getElementById('node-color').value = speciesLibrary[key].color;
+                    document.getElementById('rules-js').value = speciesLibrary[key].code;
                     rebuildPaletteUI();
                 };
                 container.appendChild(item);
@@ -674,6 +675,7 @@ return self === 1 ? (alive === 2 || alive === 3 ? 1 : 0) : (alive === 3 ? 1 : 0)
 
         // Bootstrap Launcher Initialization
         rebuildPaletteUI();
+        document.getElementById('rules-js').value = speciesLibrary[selectedSpeciesKey].code;
         switchDimensionContext('2D');
     </script>
 </body>
